@@ -1,0 +1,1 @@
+Scripts for loading EEG data. A directory with the data in differnt formats is crated by running zip_extraction.sh in a directory containing the zipped subjects files. The python script is a required help script.
