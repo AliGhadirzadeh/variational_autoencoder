@@ -55,7 +55,7 @@ if __name__ == '__main__':
     encoder = vae.FullyConnecteEncoder(img_size*img_size,latent_size)
     decoder = vae.FullyConnecteDecoder(latent_size,img_size*img_size)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    print('training using device: {}'.format(device))
+    print('Device is: {}'.format(device))
 
     v_autoencoder = vae.VariationalAutoEncoder(encoder, decoder,path_to_model=args.path_to_model, device=device,n_epoch=args.num_epoch)
     v_autoencoder.snapshot = args.snapshot
@@ -75,3 +75,18 @@ if __name__ == '__main__':
         if not args.train:
             v_autoencoder.load_model(args.model_filename)
         v_autoencoder.evaluate(mnist_test_loader)
+
+        # visualize few restored data
+        dataiter = iter(mnist_test_loader)
+        x, _ = dataiter.next()
+        x=x.numpy()
+        z,_ = v_autoencoder.encode(x)
+        xhat = v_autoencoder.decode(z)
+        nsample = min(xhat.shape[0],5)
+
+        for i in range(nsample):
+            plt.subplot(nsample,2,2*i+1)
+            plt.imshow(xhat[i,:].reshape(img_size,img_size),cmap='gray')
+            plt.subplot(nsample,2,2*i+2)
+            plt.imshow(x[i,:].reshape(img_size,img_size),cmap='gray')
+        plt.show()

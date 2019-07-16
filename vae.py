@@ -58,7 +58,6 @@ class FullyConnecteDecoder(nn.Module):
         x = self.sigmoid(self.fc5(x))
         return x
 
-
 class VariationalAutoEncoder(nn.Module):
     def __init__(self, encoder, decoder, path_to_model='vae_model/', device='cpu', n_epoch=10000,
                  beta_interval=10, beta_min=1.0e-6, beta_max=1.0e-0, lr = 1e-3):
@@ -168,11 +167,40 @@ class VariationalAutoEncoder(nn.Module):
         print('reconst_loss: %.6e' %(sum_reconst_loss / len(data_loader)))
         print('kdl_loss: %.6e' %(sum_kdl_loss / len(data_loader)))
 
-        for i in range(self.latent_size):
-            plt.subplot(510+i+1)
-            plt.hist(latent_var[:,i], bins=20)
-            plt.xlim((-1,1))
-        plt.show()
+        if self.latent_size < 10:
+            for i in range(self.latent_size):
+                plt.subplot(self.latent_size*100+11+i)
+                plt.hist(latent_var[:,i], bins=20)
+                plt.xlim((-1,1))
+            plt.show()
+
+
+    def decode(self, z):
+        """
+        The function decodes the latent variable into the original signal
+        Args:
+            z (np.ndarray or tensor): the input latent variable
+        Returns:
+            xhat (np.ndarray): the decoded signal
+        """
+        if isinstance(z,np.ndarray):
+            z = torch.from_numpy(z).detach()
+        xhat = self.decoder(z).detach().numpy()
+        return xhat
+
+    def encode(self, x):
+        """
+        The function encodes the input data into a latent variable
+        Args:
+            x (np.ndarray or tensor): the input data
+        Returns:
+            mu (np.ndarray): the mean of the encoded variable
+            logsd (np.ndarray): the log(sd) of the encoded variable
+        """
+        if isinstance(x,np.ndarray):
+            x = torch.from_numpy(x)
+        mu, logsd = self.encoder(x)
+        return mu.detach().numpy(), logsd.detach().numpy()
 
     def save_model(self):
         filepath = os.path.join(self.model_dir, 'vae_{:04d}.mdl'.format(self.epoch))
