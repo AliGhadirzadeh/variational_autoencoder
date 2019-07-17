@@ -3,66 +3,19 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
-import matplotlib.pyplot as plt
 import os
-
-class FullyConnecteEncoder(nn.Module):
-    def __init__(self, input_size, output_size):
-        super(FullyConnecteEncoder, self).__init__()
-        self.input_size = input_size
-        self.output_size = output_size
-
-        self.fc1 = nn.Linear(input_size, 1000)
-        self.fc2 = nn.Linear(1000, 500)
-        self.fc3 = nn.Linear(500, 250)
-        self.fc4_mean = nn.Linear(250, output_size)
-        self.fc4_logsd = nn.Linear(250, output_size)
-        self.tanh = nn.Tanh()
-        self.bn1 = nn.BatchNorm1d(1000)
-        self.bn2 = nn.BatchNorm1d(500)
-        self.bn3 = nn.BatchNorm1d(250)
-
-    def forward(self, x):
-        x=x.view(-1,self.input_size)
-        x = F.relu(self.bn1(self.fc1(x)))
-        x = F.relu(self.bn2(self.fc2(x)))
-        x = F.relu(self.bn3(self.fc3(x)))
-        mean = self.tanh(self.fc4_mean(x))
-        logsd = self.fc4_logsd(x)
-        return mean, logsd
-
-class FullyConnecteDecoder(nn.Module):
-    def __init__(self, input_size, output_size):
-        super(FullyConnecteDecoder, self).__init__()
-        self.input_size = input_size
-        self.output_size = output_size
-
-        self.fc1 = nn.Linear(input_size, 100)
-        self.fc2 = nn.Linear(100, 250)
-        self.fc3 = nn.Linear(250, 500)
-        self.fc4 = nn.Linear(500, 1000)
-        self.fc5 = nn.Linear(1000, output_size)
-
-        self.bn1 = nn.BatchNorm1d(100)
-        self.bn2 = nn.BatchNorm1d(250)
-        self.bn3 = nn.BatchNorm1d(500)
-        self.bn4 = nn.BatchNorm1d(1000)
-
-        self.sigmoid = nn.Sigmoid()
-
-    def forward(self, x):
-        x = F.relu(self.bn1(self.fc1(x)))
-        x = F.relu(self.bn2(self.fc2(x)))
-        x = F.relu(self.bn3(self.fc3(x)))
-        x = F.relu(self.bn4(self.fc4(x)))
-        x = self.sigmoid(self.fc5(x))
-        return x
+import models
+import matplotlib as mpl
+if os.environ.get('DISPLAY','') == '':
+    print('no display found. Using non-interactive Agg backend')
+    mpl.use('Agg')
+import matplotlib.pyplot as plt
 
 class VariationalAutoEncoder(nn.Module):
     def __init__(self, encoder, decoder, path_to_model='vae_model/', device='cpu', n_epoch=10000,
-                 beta_interval=10, beta_min=1.0e-6, beta_max=1.0e-0, lr = 1e-3):
+                 beta_interval=10, beta_min=0, beta_max=0.1, lr = 1e-3):
 
-        super(VariationalAutoEncoder, self).__init__()
+        super(VariationalAutoEncoder,self).__init__()
         assert(encoder.output_size == decoder.input_size)
         self.latent_size = encoder.output_size
         self.device = device
@@ -70,17 +23,13 @@ class VariationalAutoEncoder(nn.Module):
         self.encoder = encoder
         self.decoder = decoder
 
-        self.optimizer = optim.Adam(self.parameters(), self.lr)
-
-        self = self.to(self.device)
-
         self.deploy = False
 
         self.model_dir=path_to_model
 
         self.epoch = 0
         self.n_epoch = n_epoch
-        self.beta = beta_min
+        self.beta =  beta_min #nn.Parameter(torch.Tensor([beta_min]), requires_grad=False)
         self.beta_min = beta_min
         self.beta_max = beta_max
         self.beta_interval = beta_interval
@@ -105,13 +54,16 @@ class VariationalAutoEncoder(nn.Module):
                     torch.nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
+
         mu, logstd = self.encoder(x)
+
         if not self.deploy:
             std = torch.exp(logstd)
             eps = torch.randn_like(std).to(self.device)
             z = eps.mul(std).add(mu)
         else:
             z = mu
+
         xhat = self.decoder(z)
         xhat = xhat.view(x.size())
         return xhat, mu, logstd
@@ -134,6 +86,7 @@ class VariationalAutoEncoder(nn.Module):
     def train_vae(self, data_loader):
         self.train()
         self.deploy = False
+        optimizer = optim.Adam(self.parameters(), self.lr)
 
         self.hist_losses = np.zeros((self.n_epoch,3))
         for self.epoch in range(self.n_epoch):
@@ -144,11 +97,11 @@ class VariationalAutoEncoder(nn.Module):
             for x in data_loader:
                 if isinstance(x, list):
                     x = x[0].to(self.device)
-                self.optimizer.zero_grad()
+                optimizer.zero_grad()
                 xhat,  mu, logsd = self.forward(x)
                 loss, reconst_loss, kdl_loss = self.loss(x, xhat, mu, logsd)
                 loss.backward()
-                self.optimizer.step()
+                optimizer.step()
                 sum_loss += loss.item()
                 sum_reconst_loss += reconst_loss.item()
                 sum_kdl_loss += kdl_loss.item()
@@ -236,5 +189,5 @@ class VariationalAutoEncoder(nn.Module):
 
     def load_model(self, filename):
         filepath = os.path.join(self.model_dir, filename)
-        self.load_state_dict(torch.load(filepath) )
+        self.load_state_dict(torch.load(filepath,map_location=self.device) )
         self.eval()

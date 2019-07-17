@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torchvision
 import torchvision.transforms as transforms
+import models
 import vae
 
 import matplotlib.pyplot as plt
@@ -30,8 +31,7 @@ if __name__ == '__main__':
     # define the data transform
     transform = transforms.Compose(
         [transforms.Resize(img_size),
-         transforms.ToTensor(),
-         transforms.Normalize((0.5,), (0.5,))])
+         transforms.ToTensor()])
 
     # construct the train and test data loader
     size_test_data = 10000
@@ -46,12 +46,14 @@ if __name__ == '__main__':
     mnist_train_loader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size,shuffle=True, num_workers=0)
 
     # making the autoencoder
-    encoder = vae.FullyConnecteEncoder(img_size*img_size,latent_size)
-    decoder = vae.FullyConnecteDecoder(latent_size,img_size*img_size)
+    #encoder = models.FullyConnecteEncoder(img_size*img_size,latent_size)
+    encoder = models.ConvolutionalEncoder(img_size,img_size,1,latent_size)
+    decoder = models.FullyConnecteDecoder(latent_size,img_size*img_size)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print('Device is: {}'.format(device))
 
     v_autoencoder = vae.VariationalAutoEncoder(encoder, decoder,path_to_model=args.path_to_model, device=device,n_epoch=args.num_epoch)
+    v_autoencoder = v_autoencoder.to(device)
     v_autoencoder.snapshot = args.snapshot
 
     # show some sample images
@@ -61,6 +63,7 @@ if __name__ == '__main__':
         x = x.numpy()
         nsample = min(x.shape[0],5)
         img = x[:nsample,:].reshape(-1,img_size)
+        
         plt.imshow(img,cmap='gray')
         plt.show()
 
