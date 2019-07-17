@@ -67,10 +67,12 @@ class VariationalAutoEncoder(nn.Module):
         self.latent_size = encoder.output_size
         self.device = device
         self.lr = lr
-        self.encoder = encoder.to(self.device)
-        self.decoder = decoder.to(self.device)
+        self.encoder = encoder
+        self.decoder = decoder
 
         self.optimizer = optim.Adam(self.parameters(), self.lr)
+
+        self = self.to(self.device)
 
         self.deploy = False
 
@@ -86,6 +88,22 @@ class VariationalAutoEncoder(nn.Module):
 
         self.snapshot = 100 # number of epoch
 
+        self.init_param()
+
+    def init_param(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv1d):
+                torch.nn.init.normal_(m.weight, std=0.01)
+                if m.bias is not None:
+                    torch.nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm1d):
+                torch.nn.init.constant_(m.weight, 1)
+                torch.nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                torch.nn.init.normal_(m.weight, std=1e-3)
+                if m.bias is not None:
+                    torch.nn.init.constant_(m.bias, 0)
+
     def forward(self, x):
         mu, logstd = self.encoder(x)
         if not self.deploy:
@@ -99,6 +117,7 @@ class VariationalAutoEncoder(nn.Module):
         return xhat, mu, logstd
 
     def loss(self,x,xhat,mu,logsd):
+        #print("is cuda" ,x.is_cuda, xhat.is_cuda, mu.is_cuda, logsd.is_cuda)
         renonstruction_loss = F.mse_loss(xhat, x)
         var = (logsd.exp()) ** 2
         kld = 0.5 * torch.sum(-2*logsd + mu ** 2 + var , 1) - 0.5

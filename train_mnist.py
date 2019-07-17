@@ -21,12 +21,6 @@ parser.add_argument('--num-epoch', default=10000, type=int, help='the number of 
 parser.add_argument('--snapshot', default=100, type=int, help='the number of epochs to make a snapshot of the training')
 parser.add_argument('--batch-size', default=100, type=int, help='the batch size')
 
-def imshow(img):
-    img = img / 2 + 0.5     # unnormalize
-    npimg = img.numpy()
-    plt.imshow(np.transpose(npimg, (1, 2, 0)))
-    plt.show()
-
 if __name__ == '__main__':
     args = parser.parse_args()
 
@@ -63,8 +57,12 @@ if __name__ == '__main__':
     # show some sample images
     if args.show_sample_images:
         dataiter = iter(mnist_train_loader)
-        img, label = dataiter.next()
-        imshow(torchvision.utils.make_grid(img))
+        x, _ = dataiter.next()
+        x = x.numpy()
+        nsample = min(x.shape[0],5)
+        img = x[:nsample,:].reshape(-1,img_size)
+        plt.imshow(img,cmap='gray')
+        plt.show()
 
     # train the model
     if args.train:
@@ -84,9 +82,10 @@ if __name__ == '__main__':
         xhat = v_autoencoder.decode(z)
         nsample = min(xhat.shape[0],5)
 
-        for i in range(nsample):
-            plt.subplot(nsample,2,2*i+1)
-            plt.imshow(xhat[i,:].reshape(img_size,img_size),cmap='gray')
-            plt.subplot(nsample,2,2*i+2)
-            plt.imshow(x[i,:].reshape(img_size,img_size),cmap='gray')
+        img = x[:nsample,:].reshape(-1,img_size)
+        img_hat = xhat[:nsample,:].reshape(-1,img_size)
+        plt.subplot(1,2,1)
+        plt.imshow(img,cmap='gray')
+        plt.subplot(1,2,2)
+        plt.imshow(img_hat,cmap='gray')
         plt.show()
