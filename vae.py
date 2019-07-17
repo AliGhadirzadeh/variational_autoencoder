@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 
 class VariationalAutoEncoder(nn.Module):
     def __init__(self, encoder, decoder, path_to_model='vae_model/', device='cpu', n_epoch=10000,
-                 beta_interval=10, beta_min=0, beta_max=0.1, lr = 1e-3):
+                 beta_interval=10, beta_min=0, beta_max=0.01, snapshot=100, lr = 1e-3):
 
         super(VariationalAutoEncoder,self).__init__()
         assert(encoder.output_size == decoder.input_size)
@@ -35,7 +35,7 @@ class VariationalAutoEncoder(nn.Module):
         self.beta_interval = beta_interval
         self.beta_idx = 0
 
-        self.snapshot = 100 # number of epoch
+        self.snapshot = snapshot # number of epoch
 
         self.init_param()
 

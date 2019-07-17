@@ -21,6 +21,9 @@ parser.add_argument('--show-sample-images', default=False, action='store_true', 
 parser.add_argument('--num-epoch', default=10000, type=int, help='the number of epochs to train the model')
 parser.add_argument('--snapshot', default=100, type=int, help='the number of epochs to make a snapshot of the training')
 parser.add_argument('--batch-size', default=100, type=int, help='the batch size')
+parser.add_argument('--beta-min', default=0.0, type=float, help='the starting value for beta')
+parser.add_argument('--beta-max', default=0.01, type=float, help='the final value for beta')
+parser.add_argument('--device', default=None, type=str, help='the device for training, cpu or cuda')
 
 if __name__ == '__main__':
     args = parser.parse_args()
@@ -49,12 +52,19 @@ if __name__ == '__main__':
     #encoder = models.FullyConnecteEncoder(img_size*img_size,latent_size)
     encoder = models.ConvolutionalEncoder(img_size,img_size,1,latent_size)
     decoder = models.FullyConnecteDecoder(latent_size,img_size*img_size)
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    if args.device == None:
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    else:
+        device = args.device
     print('Device is: {}'.format(device))
 
-    v_autoencoder = vae.VariationalAutoEncoder(encoder, decoder,path_to_model=args.path_to_model, device=device,n_epoch=args.num_epoch)
+    v_autoencoder = vae.VariationalAutoEncoder(encoder, decoder,path_to_model=args.path_to_model,
+                                                device=device,n_epoch=args.num_epoch,
+                                                beta_interval=10, beta_min=args.beta_min, beta_max=args.beta_max,
+                                                snapshot=args.snapshot, lr=0.001)
     v_autoencoder = v_autoencoder.to(device)
-    v_autoencoder.snapshot = args.snapshot
+
 
     # show some sample images
     if args.show_sample_images:
@@ -63,7 +73,7 @@ if __name__ == '__main__':
         x = x.numpy()
         nsample = min(x.shape[0],5)
         img = x[:nsample,:].reshape(-1,img_size)
-        
+
         plt.imshow(img,cmap='gray')
         plt.show()
 
