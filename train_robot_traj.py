@@ -78,13 +78,18 @@ if __name__ == '__main__':
 
         # visualize few restored data
         z,_ = v_autoencoder.encode(x)
-        xhat = v_autoencoder.decode(z)
-        nsample = min(xhat.shape[0],5)
+        xhat = v_autoencoder.decode(z).reshape(x.shape)
 
-        #img = x[:nsample,:].reshape(-1,img_size)
-        #img_hat = xhat[:nsample,:].reshape(-1,img_size)
-        #plt.subplot(1,2,1)
-        #plt.imshow(img,cmap='gray')
-        #plt.subplot(1,2,2)
-        #plt.imshow(img_hat,cmap='gray')
-        #plt.show()
+        nsample = min(x.shape[0],2)
+        x = x[:nsample, :, :]
+        xhat = xhat[:nsample, : ,:]
+
+
+        #traj = x[:nsample].reshape(-1,traj_length)
+        #traj_hat = xhat[:nsample].reshape(-1,traj_length)
+        for i in range(nsample):
+            plt.subplot(nsample,1,i+1)
+            for j in range(7):
+                plt.plot(x[i][0], x[i][j+1], color='b')
+                plt.plot(x[i][0], xhat[i][j+1], color='r')
+        plt.show()

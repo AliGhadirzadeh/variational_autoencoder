@@ -62,6 +62,17 @@ class VariationalAutoEncoder(nn.Module):
 
         return xhat, mu, logstd, z
 
+    def forward_deploy(self, x):
+
+        mu, logstd = self.encoder(x)
+        var = torch.exp(logstd)
+        eps = torch.randn_like(var).to(self.device)
+        z = eps.mul(var).add(mu)
+        xhat = self.decoder(mu)
+        xhat = xhat.view(x.size())
+
+        return xhat, mu, logstd, z
+
     def loss(self,x,xhat,mu,logsd):
         renonstruction_loss = F.mse_loss(xhat, x)
         var = torch.exp(logsd)
@@ -126,7 +137,7 @@ class VariationalAutoEncoder(nn.Module):
             if isinstance(x, list):
                 label=x[1].to(self.device)
                 x = x[0].to(self.device)
-            xhat,  mu, logsd, z = self.forward(x)
+            xhat,  mu, logsd, z = self.forward_deploy(x)
             _, reconst_loss, kdl_loss = self.loss(x, xhat, mu, logsd)
             sum_reconst_loss += reconst_loss.item()
             sum_kdl_loss += kdl_loss.item()
