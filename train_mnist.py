@@ -23,6 +23,7 @@ parser.add_argument('--snapshot', default=100, type=int, help='the number of epo
 parser.add_argument('--batch-size', default=100, type=int, help='the batch size')
 parser.add_argument('--beta-min', default=0.0, type=float, help='the starting value for beta')
 parser.add_argument('--beta-max', default=0.01, type=float, help='the final value for beta')
+parser.add_argument('--beta-steps', default=20, type=int, help='the number of steps to increase beta')
 parser.add_argument('--device', default=None, type=str, help='the device for training, cpu or cuda')
 
 if __name__ == '__main__':
@@ -61,7 +62,7 @@ if __name__ == '__main__':
 
     v_autoencoder = vae.VariationalAutoEncoder(encoder, decoder,path_to_model=args.path_to_model,
                                                 device=device,n_epoch=args.num_epoch,
-                                                beta_interval=10, beta_min=args.beta_min, beta_max=args.beta_max,
+                                                beta_steps=args.beta_steps, beta_min=args.beta_min, beta_max=args.beta_max,
                                                 snapshot=args.snapshot, lr=0.001)
     v_autoencoder = v_autoencoder.to(device)
 
@@ -85,7 +86,21 @@ if __name__ == '__main__':
     if args.eval:
         if not args.train:
             v_autoencoder.load_model(args.model_filename)
-        v_autoencoder.evaluate(mnist_test_loader)
+        lv, label = v_autoencoder.evaluate(mnist_test_loader)
+
+        # visualize the latent space
+        if latent_size > 2:
+            for i in range(latent_size):
+                plt.subplot(latent_size, 1, i+1)
+                for j in range(10):
+                    idx = np.where(label == j)
+                    plt.hist(lv[idx[0],i], bins=50,stacked=False,histtype='step')
+        else:
+            for j in range(10):
+                idx = np.where(label == j)
+                plt.plot(lv[idx[0],0], lv[idx[0],1],'.', label=str(j))
+        plt.legend()
+        plt.show()
 
         # visualize few restored data
         dataiter = iter(mnist_test_loader)

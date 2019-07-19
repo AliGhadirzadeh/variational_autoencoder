@@ -9,7 +9,7 @@ import numpy as np
 
 import argparse
 
-parser = argparse.ArgumentParser(description='VAE training using YuMi Robot motion dataset')
+parser = argparse.ArgumentParser(description='VAE training for robot motion trajectories')
 parser.add_argument('--train', default=False,action='store_true', help='set it to train the model')
 parser.add_argument('--eval', default=False, action='store_true', help='set it  to evaluate the model')
 parser.add_argument('--path-to-model', default=None, type=str, help='the path to save/load the model')
@@ -21,9 +21,10 @@ parser.add_argument('--snapshot', default=100, type=int, help='the number of epo
 parser.add_argument('--batch-size', default=100, type=int, help='the batch size')
 parser.add_argument('--beta-min', default=0.0, type=float, help='the starting value for beta')
 parser.add_argument('--beta-max', default=0.01, type=float, help='the final value for beta')
+parser.add_argument('--beta-steps', default=20, type=int, help='the number of steps to increase beta')
 parser.add_argument('--device', default=None, type=str, help='the device for training, cpu or cuda')
 
-class YumiDataset(Dataset):
+class TrajDataset(Dataset):
     def __init__(self, data_filename, device="cpu"):
         self.device = device
         self.data = torch.from_numpy(np.load(data_filename)).float().to(self.device)
@@ -44,10 +45,10 @@ if __name__ == '__main__':
         device = args.device
     print('Device is: {}'.format(device))
 
-    yumi_dataset = YumiDataset(args.path_to_data, device)
-    yumi_data_loader = DataLoader(yumi_dataset, batch_size=args.batch_size,shuffle=True, num_workers=0)
-    yumi_data_iter = iter(yumi_data_loader)
-    x = yumi_data_iter.next().to('cpu').numpy()
+    traj_dataset = TrajDataset(args.path_to_data, device)
+    trajectory_loader = DataLoader(traj_dataset, batch_size=args.batch_size,shuffle=True, num_workers=0)
+    traj_iter = iter(trajectory_loader)
+    x = traj_iter.next().to('cpu').numpy()
 
     n_joints = x.shape[1]
     traj_length = x.shape[2]
@@ -58,19 +59,22 @@ if __name__ == '__main__':
 
     v_autoencoder = vae.VariationalAutoEncoder(encoder, decoder,path_to_model=args.path_to_model,
                                                 device=device,n_epoch=args.num_epoch,
-                                                beta_interval=10, beta_min=args.beta_min, beta_max=args.beta_max,
+                                                beta_steps=args.beta_steps, beta_min=args.beta_min, beta_max=args.beta_max,
                                                 snapshot=args.snapshot, lr=0.001)
     v_autoencoder = v_autoencoder.to(device)
 
     # train the model
     if args.train:
-        v_autoencoder.train_vae(yumi_data_loader)
+        v_autoencoder.train_vae(trajectory_loader)
 
     # evaluate the model
     if args.eval:
         if not args.train:
             v_autoencoder.load_model(args.model_filename)
-        v_autoencoder.evaluate(yumi_data_loader)
+        lv, _ = v_autoencoder.evaluate(trajectory_loader)
+
+        plt.plot(lv[:,0], lv[:,1],'.')
+        plt.show()
 
         # visualize few restored data
         z,_ = v_autoencoder.encode(x)

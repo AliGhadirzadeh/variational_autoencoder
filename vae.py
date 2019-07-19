@@ -6,14 +6,14 @@ import numpy as np
 import os
 import models
 import matplotlib as mpl
-if os.environ.get('DISPLAY','') == '':
+if not "DISPLAY" in os.environ:
     print('no display found. Using non-interactive Agg backend')
     mpl.use('Agg')
 import matplotlib.pyplot as plt
 
 class VariationalAutoEncoder(nn.Module):
     def __init__(self, encoder, decoder, path_to_model='vae_model/', device='cpu', n_epoch=10000,
-                 beta_interval=10, beta_min=0, beta_max=0.01, snapshot=100, lr = 1e-3):
+                 beta_steps=10, beta_min=0, beta_max=0.01, snapshot=100, lr = 1e-3):
 
         super(VariationalAutoEncoder,self).__init__()
         assert(encoder.output_size == decoder.input_size)
@@ -23,8 +23,6 @@ class VariationalAutoEncoder(nn.Module):
         self.encoder = encoder
         self.decoder = decoder
 
-        self.deploy = False
-
         self.model_dir=path_to_model
 
         self.epoch = 0
@@ -32,7 +30,7 @@ class VariationalAutoEncoder(nn.Module):
         self.beta =  beta_min #nn.Parameter(torch.Tensor([beta_min]), requires_grad=False)
         self.beta_min = beta_min
         self.beta_max = beta_max
-        self.beta_interval = beta_interval
+        self.beta_steps = beta_steps
         self.beta_idx = 0
 
         self.snapshot = snapshot # number of epoch
@@ -56,36 +54,34 @@ class VariationalAutoEncoder(nn.Module):
     def forward(self, x):
 
         mu, logstd = self.encoder(x)
-
-        if not self.deploy:
-            std = torch.exp(logstd)
-            eps = torch.randn_like(std).to(self.device)
-            z = eps.mul(std).add(mu)
-        else:
-            z = mu
-
+        var = torch.exp(logstd)
+        eps = torch.randn_like(var).to(self.device)
+        z = eps.mul(var).add(mu)
         xhat = self.decoder(z)
         xhat = xhat.view(x.size())
-        return xhat, mu, logstd
+
+        return xhat, mu, logstd, z
 
     def loss(self,x,xhat,mu,logsd):
-        #print("is cuda" ,x.is_cuda, xhat.is_cuda, mu.is_cuda, logsd.is_cuda)
         renonstruction_loss = F.mse_loss(xhat, x)
-        var = (logsd.exp()) ** 2
-        kld = 0.5 * torch.sum(-2*logsd + mu ** 2 + var , 1) - 0.5
+        var = torch.exp(logsd)
+
+        #kld = 0.5 * torch.sum(-logsd + mu ** 2 + var ,1) - self.latent_size*0.5
+        kld = torch.sum(-logsd + (mu ** 2)*0.5 + var ,1) - self.latent_size
+
         kld_loss = kld.mean()
+
         return renonstruction_loss + self.beta * kld_loss, renonstruction_loss, kld_loss
 
     def update_beta(self):
-        epoch_to_update = (self.beta_idx+1.0)/self.beta_interval*self.n_epoch
+        epoch_to_update = (self.beta_idx+1.0)/self.beta_steps*self.n_epoch
         if self.epoch > epoch_to_update:
-            self.beta = (self.beta_idx+1.0)/self.beta_interval*(self.beta_max-self.beta_min)
+            self.beta = (self.beta_idx+1.0)/self.beta_steps*(self.beta_max-self.beta_min)
             self.beta_idx += 1
             print ("beta updated - new value: ", self.beta)
 
     def train_vae(self, data_loader):
         self.train()
-        self.deploy = False
         optimizer = optim.Adam(self.parameters(), self.lr)
 
         self.hist_losses = np.zeros((self.n_epoch,3))
@@ -98,7 +94,7 @@ class VariationalAutoEncoder(nn.Module):
                 if isinstance(x, list):
                     x = x[0].to(self.device)
                 optimizer.zero_grad()
-                xhat,  mu, logsd = self.forward(x)
+                xhat,  mu, logsd, z = self.forward(x)
                 loss, reconst_loss, kdl_loss = self.loss(x, xhat, mu, logsd)
                 loss.backward()
                 optimizer.step()
@@ -109,6 +105,7 @@ class VariationalAutoEncoder(nn.Module):
             print('[%d] loss: %.6e' %(self.epoch + 1, sum_loss / len(data_loader)))
             print('\treconst_loss: %.6e' %(sum_reconst_loss / len(data_loader)))
             print('\tkdl_loss: %.6e' %(sum_kdl_loss / len(data_loader)))
+            print('\tbeta: %.6e' %(self.beta))
             self.hist_losses[self.epoch] = np.array([sum_loss, sum_reconst_loss, sum_kdl_loss])/ len(data_loader)
 
             if self.epoch % self.snapshot == (self.snapshot-1) or self.epoch == (self.n_epoch-1):
@@ -117,34 +114,32 @@ class VariationalAutoEncoder(nn.Module):
 
     def evaluate(self, data_loader):
         self.eval()
-        self.deploy = True
         sum_loss = 0.0
         sum_reconst_loss = 0.0
         sum_kdl_loss = 0.0
 
         batch_size = data_loader.batch_size
         latent_var = np.zeros((len(data_loader)*batch_size, self.latent_size))
-
+        labels = np.zeros(len(data_loader)*batch_size)
         for i, x in enumerate(data_loader):
+            label =[]
             if isinstance(x, list):
+                label=x[1].to(self.device)
                 x = x[0].to(self.device)
-            xhat,  mu, logsd = self.forward(x)
+            xhat,  mu, logsd, z = self.forward(x)
             _, reconst_loss, kdl_loss = self.loss(x, xhat, mu, logsd)
             sum_reconst_loss += reconst_loss.item()
             sum_kdl_loss += kdl_loss.item()
-            lv = np.copy(mu.detach().numpy())
+            lv = np.copy(z.detach().numpy())
             c_batch_size = lv.shape[0]
             latent_var[i*batch_size:i*batch_size+c_batch_size,:] = lv
+            if len(label)>0:
+                labels[i*batch_size:i*batch_size+c_batch_size] = label
 
         print('reconst_loss: %.6e' %(sum_reconst_loss / len(data_loader)))
         print('kdl_loss: %.6e' %(sum_kdl_loss / len(data_loader)))
 
-        if self.latent_size < 10:
-            for i in range(self.latent_size):
-                plt.subplot(self.latent_size*100+11+i)
-                plt.hist(latent_var[:,i], bins=20)
-                plt.xlim((-1,1))
-            plt.show()
+        return latent_var, labels
 
 
     def decode(self, z):
@@ -175,10 +170,16 @@ class VariationalAutoEncoder(nn.Module):
         return mu.detach().numpy(), logsd.detach().numpy()
 
     def save_model(self):
+        """
+        Saving the neural network parameters as well as the training curves
+        Args:
+        Returns:
+        """
         filepath = os.path.join(self.model_dir, 'vae_{:04d}.mdl'.format(self.epoch))
         torch.save(self.state_dict(), filepath)
         plt_labels = ['loss', 'reconst. loss', 'kdl loss']
         for i in range(3):
+            plt.subplot(3,1,i+1)
             plt.plot(np.arange(self.epoch),self.hist_losses[:self.epoch,i], label=plt_labels[i])
         plt.xlabel('epoch')
         plt.ylabel('losses')
@@ -186,6 +187,7 @@ class VariationalAutoEncoder(nn.Module):
         filepath = os.path.join(self.model_dir, 'loss_{:04d}.jpg'.format(self.epoch))
         plt.savefig(filepath)
         plt.clf()
+        print("model saved successfully")
 
     def load_model(self, filename):
         filepath = os.path.join(self.model_dir, filename)

@@ -40,14 +40,21 @@ class ConvolutionalEncoder(nn.Module):
         self.conv1 = nn.Conv2d(input_channel, 16, 3)
         self.conv2 = nn.Conv2d(16, 16, 3)
         self.conv3 = nn.Conv2d(16, 8, 3)
-        self.fc_mean = nn.Linear((input_width-6)*(input_height-6)*8, output_size)
-        self.fc_logsd = nn.Linear((input_width-6)*(input_height-6)*8, output_size)
+        self.fc1 = nn.Linear((input_width-6)*(input_height-6)*8, 256)
+        self.fc2 = nn.Linear(256, 256)
+        self.fc_mean = nn.Linear(256, output_size)
+        self.fc_logsd = nn.Linear(256, output_size)
+
+        self.bn1 = nn.BatchNorm1d(256)
+        self.bn2 = nn.BatchNorm1d(256)
 
     def forward(self, x):
         x = F.relu(self.conv1(x))
         x = F.relu(self.conv2(x))
         x = F.relu(self.conv3(x))
         x = x.view(-1, (self.input_height-6)*(self.input_width-6)*8)
+        x = F.relu(self.bn1(self.fc1(x)))
+        x = F.relu(self.bn2(self.fc2(x)))
         mean = self.fc_mean(x)
         logsd = self.fc_logsd(x)
 
