@@ -49,8 +49,9 @@ if __name__ == '__main__':
     eeg_data_iter = iter(eeg_data_loader)
     x = eeg_data_iter.next().to('cpu').numpy()
 
-    n_channel = x.shape[1]
-    data_length = x.shape[2]
+    data_length = x.shape[1]
+    n_channel = x.shape[2]
+    
 
     # making the autoencoder
     encoder = models.FullyConnecteEncoder(n_channel*data_length,latent_size)
