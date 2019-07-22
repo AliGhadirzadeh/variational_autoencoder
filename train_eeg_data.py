@@ -58,7 +58,7 @@ if __name__ == '__main__':
 
     v_autoencoder = vae.VariationalAutoEncoder(encoder, decoder,path_to_model=args.path_to_model,
                                                 device=device,n_epoch=args.num_epoch,
-                                                beta_interval=10, beta_min=args.beta_min, beta_max=args.beta_max,
+                                                beta_steps=10, beta_min=args.beta_min, beta_max=args.beta_max,
                                                 snapshot=args.snapshot, lr=0.001)
     v_autoencoder = v_autoencoder.to(device)
 
