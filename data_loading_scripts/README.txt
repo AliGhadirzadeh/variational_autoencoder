@@ -1,1 +1,4 @@
-Scripts for loading EEG data. A directory with the data in differnt formats is crated by running zip_extraction.sh in a directory containing the zipped subjects files. The python script is a required help script.
+Scripts for loading EEG data. 
+	* zip_extraction.sh creates a directory containing the data in different formats. Must be run in a directory containing the zipped subjects files and the help script txt2npy.py
+	* snippets_script.py creates snippets given EEG data and discontinuity data. Takes snippet length and window lenght as arguments
+	* get_discs.py creates mock discontinuity data
