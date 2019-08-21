@@ -29,7 +29,7 @@ for subject in subject_list:
 	try:
 		disc_data = np.load(disc_path)
 	except:
-		continue
+		disc_data = np.array([])
 
 	# Initialize times, queue and snippet list
 	t = 0
