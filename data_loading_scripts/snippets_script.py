@@ -42,8 +42,8 @@ for subject in subject_list:
 	# Load data, create queue
 	# eeg_data is numpy array containing channel voltages over time
 	# disc_data is a numpy array containing the times (indices) of discontinuities
-	eeg_path = "/home/sebgho/eeg_project/raw_data/data/subs_npy/" + subject + ".npy"
-	disc_path = "/home/sebgho/eeg_project/raw_data/data/times_npy/" + subject + ".npy"
+	eeg_path = "./data/subs_npy/" + subject + ".npy"
+	disc_path = "./data/times_npy/" + subject + ".npy"
 	try:
 		eeg_data = np.load(eeg_path)
 	except:
@@ -93,5 +93,5 @@ for subject in subject_list:
 							  number_of_channels))
 	for snippet_index in range(number_of_snippets):
 		snippet_array[snippet_index] = snippet_list[snippet_index]
-	np.save("/home/sebgho/eeg_project/raw_data/data/snippets/" + subject + "_snippets.npy", snippet_array)
+	np.save("./data/snippets/" + subject + "_snippets.npy", snippet_array)
 
