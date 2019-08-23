@@ -11,7 +11,7 @@ mkdir ./data/times_npy
 
 # Transpose raw data and convert to npy, including unit conversion
 for filename in ./data/subs/*; do
-   echo "  transposing and converting: ${filename}"
+   echo "Transposing and converting: ${filename}"
 
    # Add time header
    sed -i '1s/^/time/' ${filename}
@@ -42,3 +42,14 @@ done
 # Move to times directory
 mv ./data/times/*.npy ./data/times_npy/
 rm -r ./data/times
+
+echo "Making subject snippets"
+
+mkdir ./data/snippets/
+python3 snippets_script.py
+
+echo "Compounding subject snippets"
+echo "Currently performing compounding for COMPLETE DATA ONLY"
+echo "Change after interpolation"
+
+python3 compound_snippets.py
