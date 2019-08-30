@@ -44,12 +44,8 @@ train_loader = DataLoader(data_set, batch_size=100,
 						  sampler=train_sampler, num_workers=4)
 test_loader = DataLoader(data_set, batch_size=100,
 						 sampler=test_sampler, num_workers=4)
-i = 0
-for batch in train_loader:
-	i += batch.size()[0]
-print(i)
 
-j = 0
-for batch in test_loader:
-	j += batch.size()[0]
-print(j)
+
+
+
+

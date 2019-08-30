@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 
 class VariationalAutoEncoder(nn.Module):
     def __init__(self, encoder, decoder, path_to_model='vae_model/', device='cpu', n_epoch=10000,
-                 beta_steps=10, beta_min=0, beta_max=0.01, snapshot=100, lr = 1e-3):
+                 crossvalidation=False, patience=None, beta_steps=10, beta_min=0, beta_max=0.01, snapshot=100, lr = 1e-3):
 
         super(VariationalAutoEncoder,self).__init__()
         assert(encoder.output_size == decoder.input_size)
@@ -27,6 +27,8 @@ class VariationalAutoEncoder(nn.Module):
 
         self.epoch = 0
         self.n_epoch = n_epoch
+        self.crossvalidation = crossvalidation
+        self.patience = patience
         self.beta =  beta_min #nn.Parameter(torch.Tensor([beta_min]), requires_grad=False)
         self.beta_min = beta_min
         self.beta_max = beta_max
@@ -91,9 +93,12 @@ class VariationalAutoEncoder(nn.Module):
             self.beta_idx += 1
             print ("beta updated - new value: ", self.beta)
 
-    def train_vae(self, data_loader):
+    def train_vae(self, train_loader, val_loader=None):
         self.train()
         optimizer = optim.Adam(self.parameters(), self.lr)
+        if self.crossvalidation:
+            val_history = []
+
 
         self.hist_losses = np.zeros((self.n_epoch,3))
         for self.epoch in range(self.n_epoch):
@@ -101,7 +106,15 @@ class VariationalAutoEncoder(nn.Module):
             sum_loss = 0.0
             sum_reconst_loss = 0.0
             sum_kdl_loss = 0.0
-            for x in data_loader:
+
+            print("Epoch " + str(self.epoch) + ": ")
+
+            batches = len(train_loader)
+            batch_count = 0
+            for x in train_loader:
+                batch_count += 1
+                batch_frac = round(100 * batch_count/batches, 1)
+                print('Training model, ' + str(batch_frac) + '%' + ' complete', end='\r', flush=True)
                 if isinstance(x, list):
                     x = x[0].to(self.device)
                 optimizer.zero_grad()
@@ -112,15 +125,51 @@ class VariationalAutoEncoder(nn.Module):
                 sum_loss += loss.item()
                 sum_reconst_loss += reconst_loss.item()
                 sum_kdl_loss += kdl_loss.item()
+            train_loss = sum_loss / batches
+            print("Training loss: " + str(train_loss))
 
-            print('[%d] loss: %.6e' %(self.epoch + 1, sum_loss / len(data_loader)))
-            print('\treconst_loss: %.6e' %(sum_reconst_loss / len(data_loader)))
-            print('\tkdl_loss: %.6e' %(sum_kdl_loss / len(data_loader)))
-            print('\tbeta: %.6e' %(self.beta))
-            self.hist_losses[self.epoch] = np.array([sum_loss, sum_reconst_loss, sum_kdl_loss])/ len(data_loader)
+            #print('[%d] loss: %.6e' %(self.epoch + 1, sum_loss / batches))
+            #print('\treconst_loss: %.6e' %(sum_reconst_loss / batches))
+            #print('\tkdl_loss: %.6e' %(sum_kdl_loss / batches))
+            #print('\tbeta: %.6e' %(self.beta))
+            self.hist_losses[self.epoch] = np.array([sum_loss, sum_reconst_loss, sum_kdl_loss])/ batches
 
             if self.epoch % self.snapshot == (self.snapshot-1) or self.epoch == (self.n_epoch-1):
                 self.save_model()
+
+            if self.crossvalidation:
+                batch_count = 0
+                val_batches = len(val_loader)
+                val_sum_loss = 0.0
+                val_batch_count = 0
+                for x in val_loader:
+                    batch_count += 1
+                    batch_frac = round(100 * batch_count/batches, 1)
+                    print('Calculating validation error, ' + str(batch_frac) + '%' + ' complete', end='\r', flush=True)
+                    if isinstance(x, list):
+                        x = x[0].to(self.device)
+                    xhat,  mu, logsd, z = self.forward(x)
+                    loss = self.loss(x, xhat, mu, logsd)[0]
+                    val_sum_loss += loss.item()
+                val_loss = val_sum_loss / val_batches
+                print("Validation loss: " + str(val_loss))
+                val_history.append(val_loss)
+                # Break condition
+
+                if val_loss == min(val_history):
+                    self.save_model()
+                else:
+                    min_ind = val_history.index(min(val_history))
+                    current_ind = len(val_history) - 1
+                    ind_diff = current_ind - min_ind
+                    if ind_diff > self.patience:
+                        print("Training complete")
+                        # Needs to save earlier model, for later implementation
+                        self.save_model()
+                        break
+
+
+            
 
 
     def evaluate(self, data_loader):
