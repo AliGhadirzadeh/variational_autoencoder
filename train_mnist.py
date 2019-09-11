@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 import torchvision
 import torchvision.transforms as transforms
-import models
-import vae
+import autoencoder_models
+import variational_autoencoder
 
 import matplotlib.pyplot as plt
 import numpy as np

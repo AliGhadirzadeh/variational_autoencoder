@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
 import os
-import models
+import autoencoder_models
 import matplotlib as mpl
 if not "DISPLAY" in os.environ:
     print('no display found. Using non-interactive Agg backend')
@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 
 class VariationalAutoEncoder(nn.Module):
     def __init__(self, encoder, decoder, path_to_model='vae_model/', device='cpu', n_epoch=10000,
-                 beta_steps=10, beta_min=0, beta_max=0.01, snapshot=100, lr = 1e-3):
+                 beta_steps=10, beta_min=0, beta_max=0.01, snapshot=100, lr = 1e-4):
 
         super(VariationalAutoEncoder,self).__init__()
         assert(encoder.output_size == decoder.input_size)
@@ -117,11 +117,15 @@ class VariationalAutoEncoder(nn.Module):
             print('\treconst_loss: %.6e' %(sum_reconst_loss / len(data_loader)))
             print('\tkdl_loss: %.6e' %(sum_kdl_loss / len(data_loader)))
             print('\tbeta: %.6e' %(self.beta))
+            print('\tlearning rate: %.6e' % (self.get_lr(optimizer)))
             self.hist_losses[self.epoch] = np.array([sum_loss, sum_reconst_loss, sum_kdl_loss])/ len(data_loader)
 
             if self.epoch % self.snapshot == (self.snapshot-1) or self.epoch == (self.n_epoch-1):
                 self.save_model()
 
+    def get_lr(self, optimizer):
+        for param_group in optimizer.param_groups:
+            return param_group['lr']
 
     def evaluate(self, data_loader):
         self.eval()
@@ -163,6 +167,7 @@ class VariationalAutoEncoder(nn.Module):
         """
         if isinstance(z,np.ndarray):
             z = torch.from_numpy(z).detach()
+        z = z.float()
         xhat = self.decoder(z).detach().numpy()
         return xhat
 
@@ -191,10 +196,10 @@ class VariationalAutoEncoder(nn.Module):
         plt_labels = ['loss', 'reconst. loss', 'kdl loss']
         for i in range(3):
             plt.subplot(3,1,i+1)
-            plt.plot(np.arange(self.epoch),self.hist_losses[:self.epoch,i], label=plt_labels[i])
-        plt.xlabel('epoch')
-        plt.ylabel('losses')
-        plt.legend(loc='upper right')
+            plt.plot(np.arange(self.snapshot-1),self.hist_losses[self.epoch-self.snapshot+1:self.epoch,i], label=plt_labels[i])
+            plt.ylabel(plt_labels[i])
+            plt.xlabel('epoch')
+
         filepath = os.path.join(self.model_dir, 'loss_{:04d}.jpg'.format(self.epoch))
         plt.savefig(filepath)
         plt.clf()

@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
-import models
-import vae
+import autoencoder_models
+import variational_autoencoder
 
 import matplotlib.pyplot as plt
 import numpy as np

@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
-import models
-import vae
+import autoencoder_models
+import variational_autoencoder as vae
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -53,9 +53,10 @@ if __name__ == '__main__':
     n_joints = x.shape[1]
     traj_length = x.shape[2]
 
+
     # making the autoencoder
-    encoder = models.FullyConnecteEncoder(n_joints*traj_length,latent_size)
-    decoder = models.FullyConnecteDecoder(latent_size,n_joints*traj_length)
+    encoder = autoencoder_models.FullyConnecteEncoder(n_joints*traj_length,latent_size)
+    decoder = autoencoder_models.FullyConnecteDecoder(latent_size,n_joints*traj_length)
 
     v_autoencoder = vae.VariationalAutoEncoder(encoder, decoder,path_to_model=args.path_to_model,
                                                 device=device,n_epoch=args.num_epoch,
@@ -73,14 +74,20 @@ if __name__ == '__main__':
             v_autoencoder.load_model(args.model_filename)
         lv, _ = v_autoencoder.evaluate(trajectory_loader)
 
-        plt.plot(lv[:,0], lv[:,1],'.')
-        plt.show()
+        if args.latent_size ==1:
+            plt.hist(lv, bins='auto')
+            plt.show()
+
+        elif args.latent_size ==2:
+
+            plt.plot(lv[:,0], lv[:,1],'.')
+            plt.show()
 
         # visualize few restored data
         z,_ = v_autoencoder.encode(x)
         xhat = v_autoencoder.decode(z).reshape(x.shape)
 
-        nsample = min(x.shape[0],2)
+        nsample = min(x.shape[0],5)
         x = x[:nsample, :, :]
         xhat = xhat[:nsample, : ,:]
 

@@ -77,7 +77,7 @@ class FullyConnecteDecoder(nn.Module):
         self.bn3 = nn.BatchNorm1d(256)
         self.bn4 = nn.BatchNorm1d(512)
 
-    def forward(self, x):
+    def forward(self, x):        
         x = F.relu(self.bn1(self.fc1(x)))
         x = F.relu(self.bn2(self.fc2(x)))
         x = F.relu(self.bn3(self.fc3(x)))
