@@ -49,8 +49,9 @@ if __name__ == '__main__':
     eeg_data_iter = iter(eeg_data_loader)
     x = eeg_data_iter.next().to('cpu').numpy()
 
-    n_channel = x.shape[1]
-    data_length = x.shape[2]
+    data_length = x.shape[1]
+    n_channel = x.shape[2]
+    
 
     # making the autoencoder
     encoder = models.FullyConnecteEncoder(n_channel*data_length,latent_size)
@@ -58,7 +59,7 @@ if __name__ == '__main__':
 
     v_autoencoder = vae.VariationalAutoEncoder(encoder, decoder,path_to_model=args.path_to_model,
                                                 device=device,n_epoch=args.num_epoch,
-                                                beta_interval=10, beta_min=args.beta_min, beta_max=args.beta_max,
+                                                beta_steps=10, beta_min=args.beta_min, beta_max=args.beta_max,
                                                 snapshot=args.snapshot, lr=0.001)
     v_autoencoder = v_autoencoder.to(device)
 
