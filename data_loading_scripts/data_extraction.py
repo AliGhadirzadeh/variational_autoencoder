@@ -126,6 +126,7 @@ for sub in subs:
 
 
 data_list = []
+id_list = []
 for sub in subs:
 	sub_path = "./data/snippets/" +  sub + "_snippets.npy"
 	try:
@@ -135,19 +136,29 @@ for sub in subs:
 	# Add subjects with complete data ONLY
 	if sub_data.shape[2] == 20:
 		data_list.append(sub_data)
+		sub_id = int(sub) * np.ones(sub_data.shape[0], dtype=int)
+		id_list.append(sub_id)
+
 
 # Initiate numpy array
 number_of_snippets = sum(list(map(lambda sub : sub.shape[0], data_list)))
 snippet_length = data_list[0].shape[1]
 snippet_channels = 20
 snippet_array = np.zeros((number_of_snippets, snippet_length, snippet_channels))
+id_array = np.zeros(number_of_snippets)
 
 # Add data to numpy array and save
 start_index = 0
 end_index = 0
-for sub_data in data_list:
+for sub_ind in range(len(data_list)):
+	sub_data = data_list[sub_ind]
+	sub_id = id_list[sub_ind]
+
 	start_index = end_index
 	end_index += sub_data.shape[0]
+
 	snippet_array[start_index:end_index] = sub_data
+	id_array[start_index:end_index] = sub_id
 
 np.save("./data/snippets.npy", snippet_array)
+np.save("./data/ids.npy", id_array)
