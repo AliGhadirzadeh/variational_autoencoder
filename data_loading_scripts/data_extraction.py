@@ -160,5 +160,7 @@ for sub_ind in range(len(data_list)):
 	snippet_array[start_index:end_index] = sub_data
 	id_array[start_index:end_index] = sub_id
 
+snippet_array = np.swapaxes(snippet_array, 1, 2)
+
 np.save("./data/snippets.npy", snippet_array)
 np.save("./data/ids.npy", id_array)
