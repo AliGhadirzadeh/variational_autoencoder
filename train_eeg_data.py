@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 import autoencoder_models
-import variational_autoencoder
+import variational_autoencoder as vae
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -21,6 +21,7 @@ parser.add_argument('--snapshot', default=100, type=int, help='the number of epo
 parser.add_argument('--batch-size', default=100, type=int, help='the batch size')
 parser.add_argument('--beta-min', default=0.0, type=float, help='the starting value for beta')
 parser.add_argument('--beta-max', default=0.01, type=float, help='the final value for beta')
+parser.add_argument('--beta-steps', default=20, type=int, help='the number of steps to increase beta')
 parser.add_argument('--device', default=None, type=str, help='the device for training, cpu or cuda')
 
 class EEGDataset(Dataset):
@@ -32,6 +33,7 @@ class EEGDataset(Dataset):
         return self.num_samples
     def __getitem__(self, idx):
         return self.data[idx]
+
 
 if __name__ == '__main__':
     args = parser.parse_args()
@@ -51,37 +53,17 @@ if __name__ == '__main__':
 
     data_length = x.shape[1]
     n_channel = x.shape[2]
-    
 
     # making the autoencoder
-    encoder = models.FullyConnecteEncoder(n_channel*data_length,latent_size)
-    decoder = models.FullyConnecteDecoder(latent_size,data_length*n_channel)
+    encoder = autoencoder_models.FullyConnecteEncoder(n_channel*data_length,latent_size)
+    decoder = autoencoder_models.FullyConnecteDecoder(latent_size,data_length*n_channel)
 
     v_autoencoder = vae.VariationalAutoEncoder(encoder, decoder,path_to_model=args.path_to_model,
                                                 device=device,n_epoch=args.num_epoch,
-                                                beta_steps=10, beta_min=args.beta_min, beta_max=args.beta_max,
+                                                beta_steps=args.beta_steps, beta_min=args.beta_min, beta_max=args.beta_max,
                                                 snapshot=args.snapshot, lr=0.001)
     v_autoencoder = v_autoencoder.to(device)
 
     # train the model
     if args.train:
         v_autoencoder.train_vae(eeg_data_loader)
-
-    # evaluate the model
-    if args.eval:
-        if not args.train:
-            v_autoencoder.load_model(args.model_filename)
-        v_autoencoder.evaluate(eeg_data_loader)
-
-        # visualize few restored data
-        #z,_ = v_autoencoder.encode(x)
-        #xhat = v_autoencoder.decode(z)
-        #nsample = min(xhat.shape[0],5)
-
-        #img = x[:nsample,:].reshape(-1,img_size)
-        #img_hat = xhat[:nsample,:].reshape(-1,img_size)
-        #plt.subplot(1,2,1)
-        #plt.imshow(img,cmap='gray')
-        #plt.subplot(1,2,2)
-        #plt.imshow(img_hat,cmap='gray')
-        #plt.show()
