@@ -4,6 +4,7 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader, RandomSampler
 
 import argparse
+import itertools
 
 import matplotlib.pyplot as plt
 
@@ -63,7 +64,7 @@ class Evaluator(object):
 
 
     def input_reconstruction(self):
-        for x in data_loader:
+        for x in self.data_loader:
             x_recon = self.model.forward(x)[0]
             x = x.detach().numpy()
             x_recon = x_recon.detach().numpy()
@@ -80,28 +81,54 @@ class Evaluator(object):
                 plt.show()
 
 
-    def get_latents(self, input_data):
-        mu, logstd = self.model.encoder(input_data)
-        var = torch.exp(logstd)
-        eps = torch.randn_like(var).to(self.device)
-        latent_data = eps.mul(var).add(mu)
+    def get_latents(self, sample_number=1000):
+        batch_number = sample_number // data_loader.batch_size
+        latent_data = np.zeros((batch_number*data_loader.batch_size, 
+                                self.model.latent_size))
+        counter = 0
+        ind_start = 0
+        ind_end = data_loader.batch_size
+        for x in self.data_loader:
+            counter += 1
+            if counter > batch_number:
+                break
+            mu, logstd = self.model.encoder(x)
+            std = torch.exp(logstd)
+            eps = torch.randn_like(std)
+            z = eps.mul(std).add(mu)
+            z = z.detach().numpy()
+            latent_data[ind_start:ind_end] = z
+            ind_start += data_loader.batch_size
+            ind_end += data_loader.batch_size
         return latent_data
 
 
     def latent_correlations(self):
-        input_data = self.data_loader[0]
-        latent_data = self.get_latents(input_data)
-        print(latent_data.shape)
-
-        # visualize latents
-        #visualize(latent_data)
+        latents = self.get_latents(100)
+        count = 0
+        pair_list = []
+        for i in range(latents.shape[1]):
+            for j in range(latents.shape[1]):
+                if i == j:
+                    continue
+                pair = (i, j)
+                if pair in pair_list:
+                    continue
+                else:
+                    pair_list.append(pair)
+                    pair_list.append((j, i))
+                    x = latents[:, i]
+                    y = latents[:, j]
+                    plt.scatter(x, y)
+                    plt.xlabel("Latent dim " + str(i + 1))
+                    plt.ylabel("Latent dim " + str(j + 1))
+                    plt.show()
 
 
     def subject_representations(self, labels):
         input_data = self.data_loader[0]
         latent_data = self.get_latents(input_data)
         
-
         # train and visualize t-SNE
         #tsne(latent_data, labels)
 
@@ -133,5 +160,4 @@ model, data_loader = importer.import_model(model_path, data_path)
 
 evaluator = Evaluator(model, data_loader)
 #evaluator.input_reconstruction()
-evaluator.input_reconstruction()
-#evaluator.subject_representations()
+evaluator.latent_correlations()
