@@ -9,22 +9,22 @@ class FullyConnecteEncoder(nn.Module):
         self.input_size = input_size
         self.output_size = output_size
 
-        self.fc1 = nn.Linear(input_size, 1000)
-        self.fc2 = nn.Linear(1000, 500)
-        self.fc3 = nn.Linear(500, 250)
-        self.fc4_mean = nn.Linear(250, output_size)
-        self.fc4_logsd = nn.Linear(250, output_size)
+        self.fc1 = nn.Linear(input_size, 512)
+        self.fc2 = nn.Linear(512, 256)
+        self.fc3 = nn.Linear(256, 128)
+        self.fc4_mean = nn.Linear(128, output_size)
+        self.fc4_logsd = nn.Linear(128, output_size)
 
-        self.bn1 = nn.BatchNorm1d(1000)
-        self.bn2 = nn.BatchNorm1d(500)
-        self.bn3 = nn.BatchNorm1d(250)
+        self.bn1 = nn.BatchNorm1d(512)
+        self.bn2 = nn.BatchNorm1d(256)
+        self.bn3 = nn.BatchNorm1d(128)
 
     def forward(self, x):
         x=x.view(-1,self.input_size)
         x = F.relu(self.bn1(self.fc1(x)))
         x = F.relu(self.bn2(self.fc2(x)))
         x = F.relu(self.bn3(self.fc3(x)))
-        #mean = torch.tanh(self.fc4_mean(x))
+
         mean = self.fc4_mean(x)
         logsd = self.fc4_logsd(x)
         return mean, logsd
@@ -68,20 +68,17 @@ class FullyConnecteDecoder(nn.Module):
 
         self.fc1 = nn.Linear(input_size, 128)
         self.fc2 = nn.Linear(128, 256)
-        self.fc3 = nn.Linear(256, 256)
-        self.fc4 = nn.Linear(256, 512)
-        self.fc5 = nn.Linear(512, output_size)
+        self.fc3 = nn.Linear(256, 512)
+        self.fc4 = nn.Linear(512, output_size)
 
         self.bn1 = nn.BatchNorm1d(128)
         self.bn2 = nn.BatchNorm1d(256)
-        self.bn3 = nn.BatchNorm1d(256)
-        self.bn4 = nn.BatchNorm1d(512)
+        self.bn3 = nn.BatchNorm1d(512)
 
-    def forward(self, x):        
+    def forward(self, x):
         x = F.relu(self.bn1(self.fc1(x)))
         x = F.relu(self.bn2(self.fc2(x)))
-        x = F.relu(self.bn3(self.fc3(x)))
-        x = F.relu(self.bn4(self.fc4(x)))
-        #x = torch.sigmoid(self.fc5(x))
-        x = self.fc5(x)
+        x = F.relu(self.bn3(self.fc3(x)))        
+
+        x = self.fc4(x)
         return x

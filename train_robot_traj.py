@@ -22,6 +22,7 @@ parser.add_argument('--batch-size', default=100, type=int, help='the batch size'
 parser.add_argument('--beta-min', default=0.0, type=float, help='the starting value for beta')
 parser.add_argument('--beta-max', default=0.01, type=float, help='the final value for beta')
 parser.add_argument('--beta-steps', default=20, type=int, help='the number of steps to increase beta')
+parser.add_argument('--kl-loss-target', default=0.0, type=float, help='the target value of the kl-loss')
 parser.add_argument('--device', default=None, type=str, help='the device for training, cpu or cuda')
 
 class TrajDataset(Dataset):
@@ -61,7 +62,7 @@ if __name__ == '__main__':
     v_autoencoder = vae.VariationalAutoEncoder(encoder, decoder,path_to_model=args.path_to_model,
                                                 device=device,n_epoch=args.num_epoch,
                                                 beta_steps=args.beta_steps, beta_min=args.beta_min, beta_max=args.beta_max,
-                                                snapshot=args.snapshot, lr=0.001)
+                                                snapshot=args.snapshot, lr=0.001, target_kl_loss=args.kl_loss_target)
     v_autoencoder = v_autoencoder.to(device)
 
     # train the model
@@ -79,15 +80,23 @@ if __name__ == '__main__':
             plt.show()
 
         elif args.latent_size ==2:
-
             plt.plot(lv[:,0], lv[:,1],'.')
+            plt.show()
+
+        else:
+            for i in range(args.latent_size):
+                for j in range(i+1, args.latent_size):
+                    plt.figure()
+                    plt.plot(lv[:,i], lv[:,j],'.')
             plt.show()
 
         # visualize few restored data
         z,_ = v_autoencoder.encode(x)
         xhat = v_autoencoder.decode(z).reshape(x.shape)
 
-        nsample = min(x.shape[0],5)
+
+
+        nsample = min(x.shape[0],3)
         x = x[:nsample, :, :]
         xhat = xhat[:nsample, : ,:]
 
@@ -97,6 +106,10 @@ if __name__ == '__main__':
         for i in range(nsample):
             plt.subplot(nsample,1,i+1)
             for j in range(7):
-                plt.plot(x[i][0], x[i][j+1], color='b')
-                plt.plot(x[i][0], xhat[i][j+1], color='r')
+                if x.shape[1] == 8:
+                    plt.plot(x[i][0], x[i][j+1], color='b')
+                    plt.plot(x[i][0], xhat[i][j+1], color='r')
+                else:
+                    plt.plot(np.arange(x.shape[2]), x[i][j], color='b')
+                    plt.plot(np.arange(x.shape[2]), xhat[i][j], color='r')
         plt.show()

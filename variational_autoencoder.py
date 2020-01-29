@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 
 class VariationalAutoEncoder(nn.Module):
     def __init__(self, encoder, decoder, path_to_model='vae_model/', device='cpu', n_epoch=10000,
-                 beta_steps=10, beta_min=0, beta_max=0.01, snapshot=100, lr = 1e-4):
+                 beta_steps=10, beta_min=0, beta_max=0.01, snapshot=100, lr = 1e-4, target_kl_loss=0):
 
         super(VariationalAutoEncoder,self).__init__()
         assert(encoder.output_size == decoder.input_size)
@@ -32,6 +32,9 @@ class VariationalAutoEncoder(nn.Module):
         self.beta_max = beta_max
         self.beta_steps = beta_steps
         self.beta_idx = 0
+
+        self.target_kl_loss = target_kl_loss
+        self.average_kl_loss = 0
 
         self.snapshot = snapshot # number of epoch
 
@@ -77,7 +80,6 @@ class VariationalAutoEncoder(nn.Module):
         renonstruction_loss = F.mse_loss(xhat, x)
         var = torch.exp(logsd)
 
-        #kld = 0.5 * torch.sum(-logsd + mu ** 2 + var ,1) - self.latent_size*0.5
         kld = torch.sum(-logsd + (mu ** 2)*0.5 + var ,1) - self.latent_size
 
         kld_loss = kld.mean()
@@ -87,9 +89,10 @@ class VariationalAutoEncoder(nn.Module):
     def update_beta(self):
         epoch_to_update = (self.beta_idx+1.0)/self.beta_steps*self.n_epoch
         if self.epoch > epoch_to_update:
-            self.beta = (self.beta_idx+1.0)/self.beta_steps*(self.beta_max-self.beta_min)
-            self.beta_idx += 1
-            print ("beta updated - new value: ", self.beta)
+            if self.average_kl_loss > self.target_kl_loss:
+                self.beta = (self.beta_idx+1.0)/self.beta_steps*(self.beta_max-self.beta_min)
+                self.beta_idx += 1
+                print ("beta updated - new value: ", self.beta)
 
     def train_vae(self, data_loader):
         self.train()
@@ -100,25 +103,30 @@ class VariationalAutoEncoder(nn.Module):
             self.update_beta()
             sum_loss = 0.0
             sum_reconst_loss = 0.0
-            sum_kdl_loss = 0.0
+            sum_kl_loss = 0.0
             for x in data_loader:
                 if isinstance(x, list):
                     x = x[0].to(self.device)
                 optimizer.zero_grad()
                 xhat,  mu, logsd, z = self.forward(x)
-                loss, reconst_loss, kdl_loss = self.loss(x, xhat, mu, logsd)
+                loss, reconst_loss, kl_loss = self.loss(x, xhat, mu, logsd)
                 loss.backward()
                 optimizer.step()
                 sum_loss += loss.item()
                 sum_reconst_loss += reconst_loss.item()
-                sum_kdl_loss += kdl_loss.item()
+                sum_kl_loss += kl_loss.item()
+
+            if self.epoch == 0:
+                self.average_kl_loss = sum_kl_loss / len(data_loader)
+            else:
+                self.average_kl_loss = 0.8*self.average_kl_loss+0.2*(sum_kl_loss / len(data_loader))
 
             print('[%d] loss: %.6e' %(self.epoch + 1, sum_loss / len(data_loader)))
             print('\treconst_loss: %.6e' %(sum_reconst_loss / len(data_loader)))
-            print('\tkdl_loss: %.6e' %(sum_kdl_loss / len(data_loader)))
+            print('\tkl_loss: %.6e' %(sum_kl_loss / len(data_loader)))
             print('\tbeta: %.6e' %(self.beta))
             print('\tlearning rate: %.6e' % (self.get_lr(optimizer)))
-            self.hist_losses[self.epoch] = np.array([sum_loss, sum_reconst_loss, sum_kdl_loss])/ len(data_loader)
+            self.hist_losses[self.epoch] = np.array([sum_loss, sum_reconst_loss, sum_kl_loss])/ len(data_loader)
 
             if self.epoch % self.snapshot == (self.snapshot-1) or self.epoch == (self.n_epoch-1):
                 self.save_model()
@@ -131,7 +139,7 @@ class VariationalAutoEncoder(nn.Module):
         self.eval()
         sum_loss = 0.0
         sum_reconst_loss = 0.0
-        sum_kdl_loss = 0.0
+        sum_kl_loss = 0.0
 
         batch_size = data_loader.batch_size
         latent_var = np.zeros((len(data_loader)*batch_size, self.latent_size))
@@ -142,9 +150,9 @@ class VariationalAutoEncoder(nn.Module):
                 label=x[1].to(self.device)
                 x = x[0].to(self.device)
             xhat,  mu, logsd, z = self.forward_deploy(x)
-            _, reconst_loss, kdl_loss = self.loss(x, xhat, mu, logsd)
+            _, reconst_loss, kl_loss = self.loss(x, xhat, mu, logsd)
             sum_reconst_loss += reconst_loss.item()
-            sum_kdl_loss += kdl_loss.item()
+            sum_kl_loss += kl_loss.item()
             lv = np.copy(z.detach().numpy())
             c_batch_size = lv.shape[0]
             latent_var[i*batch_size:i*batch_size+c_batch_size,:] = lv
@@ -152,7 +160,7 @@ class VariationalAutoEncoder(nn.Module):
                 labels[i*batch_size:i*batch_size+c_batch_size] = label
 
         print('reconst_loss: %.6e' %(sum_reconst_loss / len(data_loader)))
-        print('kdl_loss: %.6e' %(sum_kdl_loss / len(data_loader)))
+        print('kl_loss: %.6e' %(sum_kl_loss / len(data_loader)))
 
         return latent_var, labels
 
