@@ -6,17 +6,12 @@ import pandas as pd
 from math import sqrt
 from sklearn.metrics import mean_squared_error
 from estimators import *
-
-import warnings
-warnings.filterwarnings("ignore", category=UserWarning)
-
+from misc import *
 
 # Get estimator and data
-estim_constructor = ConstructEstim()
-estimator = estim_constructor.get_estim()
+x, y = get_data()
+estimator = get_estim()
 estimator.tqdm_disable = False
-data_constructor = ConstructData()
-x, y = data_constructor.get_data()
 
 # Fit estimator
 estimator.fit(x, y)
