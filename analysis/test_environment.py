@@ -1,28 +1,22 @@
-# Test evironment for single estimator debugging
+# Test evironment for single model debugging
 # The test environment-script implements an environment where estimators can be tested on real and test data
 
 import numpy as np
 import pandas as pd
-from math import sqrt
-from sklearn.metrics import mean_squared_error
-from estimators import *
-from misc import *
+from utils import *
 
 # Get estimator and data
-x, y = get_data()
-estimator = get_estim()
-estimator.tqdm_disable = False
+x, y = get_data("EEG", "scores")
+model = get_model("Conv1d_reg")
+model.tqdm_disable = False
+
 
 # Fit estimator
-estimator.fit(x, y)
+model.fit(x, y)
+
 
 # Visualize (learning curves)
-try:
-    estimator.plot_learning()
-except:
-    print("plot_learning not implemented")
-
-
+plot_learning(model, y)
 
 # Save
 
