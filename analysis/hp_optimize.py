@@ -11,18 +11,15 @@ from skopt.plots import plot_evaluations, plot_objective, plot_convergence
 
 # Get data, estimator and hp-space
 x, y = get_data("digits")
-estim = get_estim("FFNN_clf")
-space = get_space(estim)
-
-print(estim.get_params().keys())
+model = get_model("FFNN_clf")
+space = get_space(model)
 
 # Construct objective
 # The objective is the negative mean cv score of the estimator as a function of the hp:s
 @use_named_args(space)
 def objective(**params):
-    estim.set_params(**params)
-
-    return -np.mean(cross_val_score(estim, x, y, cv=5, n_jobs=-1))
+    model.set_params(**params)
+    return -np.mean(cross_val_score(model, x, y, cv=3, n_jobs=-1))
 
 # Optimize objective over hp-space
 checkpoint_saver = CheckpointSaver("./Checkpoint/checkpoint.pkl")

@@ -22,9 +22,9 @@ class Network(object):
         self.network = None
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        self.n_epoch = 200
+        self.n_epoch = 150
         self.val_frac = 0.2
-        self.patience = 200
+        self.patience = 150
 
         cols = ["Epoch", "Training error", "Validation error"]
         array = np.empty((self.n_epoch, len(cols)))
@@ -32,10 +32,24 @@ class Network(object):
         self.history = pd.DataFrame(array, columns=cols)
         self.tqdm_disable = True
 
-    def train(self, x, y):
-        x_train, x_val, y_train, y_val = train_test_split(x, y, 
+        self.subject_wise_split = False
+        self.target_string = None
+
+    def learn(self, x, y):
+        # Implement subject-wise train/val split
+        if self.subject_wise_split:
+            from utils import subject_wise_split
+            print("HEEJ")
+            x_train, x_val, y_train, y_val = subject_wise_split(x, y,
+                                                          self.target_string,
+                                                          test_size=self.val_frac)
+            print("HEEJ")
+        else:
+            x_train, x_val, y_train, y_val = train_test_split(x, y, 
                                                           test_size=self.val_frac,
                                                           stratify=y)
+
+        
 
         # Initialize training/validation loop
         val_counter = 0
@@ -45,6 +59,7 @@ class Network(object):
 
         # Training/validation loop
         for epoch in tqdm(range(self.n_epoch), disable=self.tqdm_disable):
+            self.train()
             opt.zero_grad()
             y_hat_train = self.forward(x_train)
             train_loss = self.criterion(y_hat_train, y_train)
@@ -52,6 +67,7 @@ class Network(object):
             opt.step()
 
             with torch.no_grad():
+                self.eval()
                 y_hat_val = self.forward(x_val)
                 val_loss = self.criterion(y_hat_val, y_val)
 

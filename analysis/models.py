@@ -16,6 +16,7 @@ import torch.optim as optim
 
 from network_interface import Network
 
+
 """ 
 This file contains model classes that inherit from the sklearn.base BaseEstimator and
 the Network super classes.
@@ -23,7 +24,8 @@ the Network super classes.
 sklearn.base BaseEstimator is the sklearn Estimator interface, which is required for
 compatibility with sklearn and skopt optimization algorithms. The Estimator interface
 requires an implementation of fit(x, y), predict(x) and score(x, y). The Estimator
-interface expects numpy.ndarray inputs.
+interface expects numpy.ndarray inputs in the format (N x dim_1 x dim_2 x ... x dim_n),
+where N is the number of samples and dim_i is the i:th feature dimenson size.
 
 Network is a neural network super class which provides implementations of neural
 network-specific functionality, such as train(x, y), forward(x) and a plotting function.
@@ -70,7 +72,7 @@ class FFNN_reg(BaseEstimator, Network, nn.Module):
         x = torch.Tensor(x).to(self.device)
         y = torch.Tensor(np.expand_dims(y, axis=1)).to(self.device)
         self.construct_network(x, y)
-        self.train(x, y)
+        self.learn(x, y)
 
     def predict(self, x):
         x = torch.Tensor(x)
@@ -115,7 +117,7 @@ class FFNN_clf(BaseEstimator, Network, nn.Module):
         x = torch.Tensor(x)
         y = torch.Tensor(y).to(torch.int64)
         self.construct_network(x, y)
-        self.train(x, y)
+        self.learn(x, y)
 
     def predict(self, x):
         x = torch.Tensor(x)
@@ -186,7 +188,7 @@ class Conv1d_reg(BaseEstimator, Network, nn.Module):
         x = torch.Tensor(x)
         y = torch.Tensor(np.expand_dims(y, axis=1))
         self.construct_network(x, y)
-        self.train(x, y)
+        self.learn(x, y)
 
     def predict(self, x):
         x = torch.Tensor(x)
@@ -256,18 +258,17 @@ class Conv1d_clf(BaseEstimator, Network, nn.Module):
         x = torch.Tensor(x)
         y = torch.Tensor(y).to(torch.int64)
         self.construct_network(x, y)
-        self.train(x, y)
+        self.learn(x, y)
 
     def predict(self, x):
         x = torch.Tensor(x)
         y_hat = self.forward(x).detach().numpy()
+        y_hat = np.argmax(y_hat, axis=1)
         return y_hat
 
     def score(self, x, y):
-        x = torch.Tensor(x)
-        y_hat = self.forward(x).detach().numpy()
-        y_hat = np.argmax(y_hat, axis=1)
-        score = accuracy_score(y, y_hat)
+        self.eval()
+        score = accuracy_score(y, self.predict(x))
         return score
 
 
@@ -314,7 +315,7 @@ class TemporalBlock(nn.Module):
 
 
 class TemporalConvNet_reg(BaseEstimator, Network, nn.Module):
-    def __init__(self, lr=3e-4, num_tb_channels=[5, 5], num_fc_channels=[500, 200, 100], kernel_size=2, dropout=0.2):
+    def __init__(self, lr=3e-4, num_tb_channels=[10, 10, 10], num_fc_channels=[200, 200, 100, 100], kernel_size=2, dropout=0.2):
         super(TemporalConvNet_reg, self).__init__()
         self.lr = lr
         self.num_tb_channels = num_tb_channels
@@ -355,7 +356,7 @@ class TemporalConvNet_reg(BaseEstimator, Network, nn.Module):
         x = torch.Tensor(x)
         y = torch.Tensor(np.expand_dims(y, axis=1))
         self.construct_network(x, y)
-        self.train(x, y)
+        self.learn(x, y)
 
     def predict(self, x):
         x = torch.Tensor(x)
@@ -368,9 +369,9 @@ class TemporalConvNet_reg(BaseEstimator, Network, nn.Module):
         return score
 
 
-class TemporalConvNet(BaseEstimator, Network, nn.Module):
+class TemporalConvNet_clf(BaseEstimator, Network, nn.Module):
     def __init__(self, lr=3e-3, num_tb_channels=[20, 20], num_fc_channels=[500, 200, 100, 50], kernel_size=2, dropout=0.2):
-        super(TemporalConvNet, self).__init__()
+        super(TemporalConvNet_clf, self).__init__()
         self.lr = lr
         self.num_tb_channels = num_tb_channels
         self.num_fc_channels = num_fc_channels
@@ -410,16 +411,15 @@ class TemporalConvNet(BaseEstimator, Network, nn.Module):
         x = torch.Tensor(x)
         y = torch.Tensor(y).to(torch.int64)
         self.construct_network(x, y)
-        self.train(x, y)
+        self.learn(x, y)
 
     def predict(self, x):
         x = torch.Tensor(x)
         y_hat = self.forward(x).detach().numpy()
+        y_hat = np.argmax(y_hat, axis=1)
         return y_hat
 
     def score(self, x, y):
-        x = torch.Tensor(x)
-        y_hat = self.forward(x).detach().numpy()
-        y_hat = np.argmax(y_hat, axis=1)
-        score = accuracy_score(y, y_hat)
+        self.eval()
+        score = accuracy_score(y, self.predict(x))
         return score
