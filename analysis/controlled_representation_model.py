@@ -6,6 +6,7 @@ import utils
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
+from torch.utils.tensorboard import SummaryWriter
 import torch.optim as optim
 
 from sklearn.metrics import r2_score, accuracy_score
@@ -133,20 +134,22 @@ class ControlledNetwork(nn.Module):
     """docstring for CompositeNetwork"""
     def __init__(self, alpha=1, beta=1):
         super(ControlledNetwork, self).__init__()
+        self.extractor = ExtractorNetwork()
+        self.dep_predictor = PredictorNetwork()
+        self.ctrl_predictor = PredictorNetwork()
+
         self.n_epoch = 100
+        self.lr = 3e-4
+
+        self.writer = SummaryWriter()
+
 
     def construct_network(self, data):
         with torch.no_grad():
             x, y, c = data[:]
-
-            self.extractor = ExtractorNetwork()
             self.extractor.construct_network(x)
             x_latent = self.extractor(x)
-
-            self.dep_predictor = PredictorNetwork()
             self.dep_predictor.construct_network(x_latent, y)
-            
-            self.ctrl_predictor = PredictorNetwork()
             self.ctrl_predictor.construct_network(x_latent, c)
 
     def forward(self, x):
@@ -161,9 +164,9 @@ class ControlledNetwork(nn.Module):
         val_loader = DataLoader(val_data, batch_size=32, shuffle=True)
 
         # One optimizer per network
-        extractor_opt = optim.Adam(self.parameters(), lr=3e-4)
-        dep_predictor_opt = optim.Adam(self.parameters(), lr=3e-4)
-        ctrl_predictor_opt = optim.Adam(self.parameters(), lr=3e-4)
+        extractor_opt = optim.Adam(self.parameters(), lr=self.lr)
+        dep_predictor_opt = optim.Adam(self.parameters(), lr=self.lr)
+        ctrl_predictor_opt = optim.Adam(self.parameters(), lr=self.lr)
 
         for epoch in tqdm(range(self.n_epoch)):
 
@@ -210,7 +213,7 @@ class ControlledNetwork(nn.Module):
             # EVALUATE MODEL ON VALIDATION DATA
             with torch.no_grad():
                 self.eval()
-                self.print_stats(val_loader)
+                self.evaluate(val_loader, epoch)
 
     def activate(self, network):
         for param in network.parameters():
@@ -228,7 +231,7 @@ class ControlledNetwork(nn.Module):
         extractor_loss = dep_loss - 0.5 * ctrl_loss
         return extractor_loss
     
-    def print_stats(self, test_loader):
+    def evaluate(self, test_loader, epoch):
         n_batches = len(test_loader)
         i = 0
         extractor_loss = np.zeros(n_batches)
@@ -240,21 +243,28 @@ class ControlledNetwork(nn.Module):
 
         for b_x, b_y, b_c in test_loader:
             b_y_hat, b_c_hat = self.forward(b_x)
-
             extractor_loss[i] = self.extractor_loss(b_y_hat, b_y, b_c_hat, b_c)
             dep_loss[i] = self.dep_predictor.loss(b_y_hat, b_y)
             ctrl_loss[i] += self.ctrl_predictor.loss(b_c_hat, b_c)
-
             dep_score[i] = self.dep_predictor.score(b_y_hat, b_y)
             ctrl_score[i] = self.ctrl_predictor.score(b_c_hat, b_c)
-
             i += 1
+
+        self.writer.add_scalars("Loss", {"extractor" : extractor_loss.mean(),
+                                         "dep_predictor" : dep_loss.mean(),
+                                         "ctrl_predictor" : ctrl_loss.mean()}, 
+                                         epoch)
+        self.writer.add_scalar('Accuracy/dep_predictor', dep_score.mean(), epoch)
+        self.writer.add_scalar('Accuracy/ctrl_predictor', ctrl_score.mean(), epoch)
+
+        """
         print("Extractor loss (validation): %.4f" % extractor_loss.mean())
         print("Dependent variable loss (validation): %.4f" % dep_loss.mean())
         print("Control variable loss (validation): %.4f" % ctrl_loss.mean())
 
         print("Dependent variable score (validation): %.4f" % dep_score.mean())
         print("Control variable score (validation): %.4f" % ctrl_score.mean())
+        """
 
 
 
@@ -286,6 +296,4 @@ data.ctrl_variable = "target"
 
 cn = ControlledNetwork()
 cn.construct_network(data)
-#print(cn.dep_predictor.type)
-#print(cn.ctrl_predictors[data.ctrl_variables[0]].type)
 cn.learn(data)
