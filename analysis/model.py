@@ -74,9 +74,10 @@ class ExtractorNetwork(nn.Module):
         super(ExtractorNetwork, self).__init__()
         self.network = None
         self.criterion = nn.MSELoss()
-        self.conv = True
+        self.conv = None
 
     def construct_network(self, x):
+        self.conv = True if len(x.shape)==3 else False
         if self.conv:
             num_inputs = x.shape[1]
             conv_channels = [60, 40, 20]
@@ -118,7 +119,7 @@ class ControlledNetwork(nn.Module, BaseEstimator):
 
         self.n_epoch = 100
         
-        self.tqdm_disable = True
+        self.tqdm_disable = False
         self.writer = writer
 
     def construct_network(self, data):
@@ -128,8 +129,8 @@ class ControlledNetwork(nn.Module, BaseEstimator):
             x_latent = self.extractor(x)
             self.dep_predictor.construct_network(x_latent, y)
             self.ctrl_predictor.construct_network(x_latent, c)
-            if self.writer:
-                self.writer.add_graph(self, x[0])
+            #if self.writer:
+                #self.writer.add_graph(self)
             self.initialized = True
 
     def forward(self, x):
@@ -192,7 +193,7 @@ class ControlledNetwork(nn.Module, BaseEstimator):
             # EVALUATE MODEL ON VALIDATION DATA
             with torch.no_grad():
                 self.eval()
-                self.evaluate(val_data, epoch)
+                self.evaluate(train_data, val_data, epoch)
 
     def activate(self, network):
         for param in network.parameters():
@@ -217,22 +218,33 @@ class ControlledNetwork(nn.Module, BaseEstimator):
             score = self.ctrl_predictor.score(c_hat, c)
         return score.mean()
     
-    def evaluate(self, data, epoch):
-        x, y, c = data[:]
-        y_hat, c_hat = self.forward(x)
-        extractor_loss = self.extractor_loss(y_hat, y, c_hat, c)
-        dep_loss = self.dep_predictor.loss(y_hat, y)
-        ctrl_loss = self.ctrl_predictor.loss(c_hat, c)
-        dep_score = self.dep_predictor.score(y_hat, y)
-        ctrl_score = self.ctrl_predictor.score(c_hat, c)
+    def evaluate(self, train_data, test_data, epoch):
+        train_x, train_y, train_c = train_data[:]
+        test_x, test_y, test_c = test_data[:]
+        
+        train_y_hat, train_c_hat = self.forward(train_x)
+        test_y_hat, test_c_hat = self.forward(test_x)
+
+        extractor_loss = self.extractor_loss(test_y_hat, test_y, test_c_hat, test_c)
+        dep_loss = self.dep_predictor.loss(test_y_hat, test_y)
+        ctrl_loss = self.ctrl_predictor.loss(test_c_hat, test_c)
+
+        train_dep_score = self.dep_predictor.score(train_y_hat, train_y)
+        train_ctrl_score = self.ctrl_predictor.score(train_c_hat, train_c)
+        test_dep_score = self.dep_predictor.score(test_y_hat, test_y)
+        test_ctrl_score = self.ctrl_predictor.score(test_c_hat, test_c)
 
         if self.writer:
             self.writer.add_scalars("Loss", {"extractor" : extractor_loss,
                                              "dep_predictor" : dep_loss,
                                              "ctrl_predictor" : ctrl_loss}, 
                                              epoch)
-            self.writer.add_scalar('Accuracy/dep_predictor', dep_score, epoch)
-            self.writer.add_scalar('Accuracy/ctrl_predictor', ctrl_score, epoch)
+            self.writer.add_scalars("Score/dep_predictor", {"train" : train_dep_score, 
+                                                            "test" : test_dep_score},
+                                                            epoch)
+            self.writer.add_scalars("Score/ctrl_predictor", {"train" : train_ctrl_score,
+                                                             "test" : test_ctrl_score},
+                                                              epoch)
 
 
 class Dataset(Dataset):
