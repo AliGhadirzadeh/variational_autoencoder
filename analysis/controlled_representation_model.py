@@ -9,32 +9,9 @@ from torch.utils.data import Dataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
 import torch.optim as optim
 
+from sklearn.base import BaseEstimator
 from sklearn.metrics import r2_score, accuracy_score
 
-
-
-class Dataset(Dataset):
-
-    def __init__(self, x, df):
-        self.x = x
-        self.df = df
-        self.dep_variable = None
-        self.indep_variable = None
-        self.ctrl_variable = None
-
-    def __len__(self):
-        return self.df.shape[0]
-
-    def __getitem__(self, index):
-        indep_sample = self.x[index]
-        dep_sample = torch.as_tensor(self.df[self.dep_variable][index])
-        ctrl_sample = torch.as_tensor(self.df[self.ctrl_variable][index])
-        return indep_sample, dep_sample, ctrl_sample
-
-    def train_test_split(self, test_size=0.2):
-        train_size = int((1-test_size) * len(self))
-        test_size = len(self) - train_size
-        return torch.utils.data.random_split(self, [train_size, test_size])
 
 class PredictorNetwork(nn.Module):
 
@@ -98,7 +75,7 @@ class ExtractorNetwork(nn.Module):
         super(ExtractorNetwork, self).__init__()
         self.network = None
         self.criterion = nn.MSELoss()
-        self.conv = False
+        self.conv = True
 
     def construct_network(self, x):
         if self.conv:
@@ -130,19 +107,20 @@ class ExtractorNetwork(nn.Module):
         return self.network(x)
 
 
-class ControlledNetwork(nn.Module):
+class ControlledNetwork(nn.Module, BaseEstimator):
     """docstring for CompositeNetwork"""
-    def __init__(self, alpha=1, beta=1):
+    def __init__(self, lr=3e-4, writer=None):
         super(ControlledNetwork, self).__init__()
+        self.lr = lr
+
         self.extractor = ExtractorNetwork()
         self.dep_predictor = PredictorNetwork()
         self.ctrl_predictor = PredictorNetwork()
 
         self.n_epoch = 100
-        self.lr = 3e-4
-
-        self.writer = SummaryWriter()
-
+        
+        self.tqdm_disable = True
+        self.writer = writer
 
     def construct_network(self, data):
         with torch.no_grad():
@@ -151,6 +129,9 @@ class ControlledNetwork(nn.Module):
             x_latent = self.extractor(x)
             self.dep_predictor.construct_network(x_latent, y)
             self.ctrl_predictor.construct_network(x_latent, c)
+            if self.writer:
+                self.writer.add_graph(self, x[0])
+            self.initialized = True
 
     def forward(self, x):
         latent_x = self.extractor(x)
@@ -158,22 +139,21 @@ class ControlledNetwork(nn.Module):
         c = self.ctrl_predictor(latent_x)
         return y, c
 
-    def learn(self, data):
+    def fit(self, data):
+        self.construct_network(data)
         train_data, val_data = data.train_test_split()
         train_loader = DataLoader(train_data, batch_size=32, shuffle=True)
-        val_loader = DataLoader(val_data, batch_size=32, shuffle=True)
 
         # One optimizer per network
         extractor_opt = optim.Adam(self.parameters(), lr=self.lr)
         dep_predictor_opt = optim.Adam(self.parameters(), lr=self.lr)
         ctrl_predictor_opt = optim.Adam(self.parameters(), lr=self.lr)
 
-        for epoch in tqdm(range(self.n_epoch)):
+        for epoch in tqdm(range(self.n_epoch), disable=self.tqdm_disable):
 
             # TRAIN MODEL ON TRAIN DATA
             for b_x, b_y, b_c in train_loader:
                 self.train()
-
                 # ---- TRAIN EXTRACTOR ----
                 # Activate extractor, de-activate rest, zero_grad
                 self.deactivate(self.dep_predictor)
@@ -213,7 +193,7 @@ class ControlledNetwork(nn.Module):
             # EVALUATE MODEL ON VALIDATION DATA
             with torch.no_grad():
                 self.eval()
-                self.evaluate(val_loader, epoch)
+                self.evaluate(val_data, epoch)
 
     def activate(self, network):
         for param in network.parameters():
@@ -228,72 +208,133 @@ class ControlledNetwork(nn.Module):
         ctrl_loss = self.ctrl_predictor.loss(c_hat, c)
 
         # Extractor trained to minimize composite loss
-        extractor_loss = dep_loss - 0.5 * ctrl_loss
+        extractor_loss = dep_loss + 1 * ctrl_loss
         return extractor_loss
+
+    def score(self, data):
+        with torch.no_grad():
+            x, y, c = data[:]
+            y_hat, c_hat = self.forward(x)
+            score = self.ctrl_predictor.score(c_hat, c)
+        return score.mean()
     
-    def evaluate(self, test_loader, epoch):
-        n_batches = len(test_loader)
-        i = 0
-        extractor_loss = np.zeros(n_batches)
-        dep_loss = np.zeros(n_batches)
-        ctrl_loss = np.zeros(n_batches)
+    def evaluate(self, data, epoch):
+        x, y, c = data[:]
+        y_hat, c_hat = self.forward(x)
+        extractor_loss = self.extractor_loss(y_hat, y, c_hat, c)
+        dep_loss = self.dep_predictor.loss(y_hat, y)
+        ctrl_loss = self.ctrl_predictor.loss(c_hat, c)
+        dep_score = self.dep_predictor.score(y_hat, y)
+        ctrl_score = self.ctrl_predictor.score(c_hat, c)
 
-        dep_score = np.zeros(n_batches)
-        ctrl_score = np.zeros(n_batches)
-
-        for b_x, b_y, b_c in test_loader:
-            b_y_hat, b_c_hat = self.forward(b_x)
-            extractor_loss[i] = self.extractor_loss(b_y_hat, b_y, b_c_hat, b_c)
-            dep_loss[i] = self.dep_predictor.loss(b_y_hat, b_y)
-            ctrl_loss[i] += self.ctrl_predictor.loss(b_c_hat, b_c)
-            dep_score[i] = self.dep_predictor.score(b_y_hat, b_y)
-            ctrl_score[i] = self.ctrl_predictor.score(b_c_hat, b_c)
-            i += 1
-
-        self.writer.add_scalars("Loss", {"extractor" : extractor_loss.mean(),
-                                         "dep_predictor" : dep_loss.mean(),
-                                         "ctrl_predictor" : ctrl_loss.mean()}, 
-                                         epoch)
-        self.writer.add_scalar('Accuracy/dep_predictor', dep_score.mean(), epoch)
-        self.writer.add_scalar('Accuracy/ctrl_predictor', ctrl_score.mean(), epoch)
-
-        """
-        print("Extractor loss (validation): %.4f" % extractor_loss.mean())
-        print("Dependent variable loss (validation): %.4f" % dep_loss.mean())
-        print("Control variable loss (validation): %.4f" % ctrl_loss.mean())
-
-        print("Dependent variable score (validation): %.4f" % dep_score.mean())
-        print("Control variable score (validation): %.4f" % ctrl_score.mean())
-        """
+        if self.writer:
+            self.writer.add_scalars("Loss", {"extractor" : extractor_loss,
+                                             "dep_predictor" : dep_loss,
+                                             "ctrl_predictor" : ctrl_loss}, 
+                                             epoch)
+            self.writer.add_scalar('Accuracy/dep_predictor', dep_score, epoch)
+            self.writer.add_scalar('Accuracy/ctrl_predictor', ctrl_score, epoch)
 
 
+class Dataset(Dataset):
 
+    def __init__(self, x, y, c):
+        self.x = x
+        self.y = y
+        self.c = c
+
+    def __len__(self):
+        return self.x.shape[0]
+
+    def __getitem__(self, index):
+        x_sample = self.x[index]
+        y_sample = self.y[index]
+        c_sample = self.c[index]
+        return x_sample, y_sample, c_sample 
+
+    def train_test_split(self, test_size=0.2):
+        from sklearn.model_selection import train_test_split
+        data_list = train_test_split(self.x, self.y, self.c, 
+                                     test_size=test_size)
+        x_train, y_train, c_train = data_list[0::2]
+        x_test, y_test, c_test = data_list[1::2]
+        train_data = Dataset(x_train, y_train, c_train)
+        test_data = Dataset(x_test, y_test, c_test)
+        return train_data, test_data
+        
 
 # EEG
-"""
-x, y = utils.get_data("EEG", "subject_id")
-x = torch.Tensor(x)
-y = torch.Tensor(y)
-df = pd.read_pickle("../../data/data/numpy_files/df.pkl")
 
-data = Dataset(x, df)
-data.indep_variable = "EEG"
-data.dep_variable = "math_t1"
-data.ctrl_variable = "subject_id"
-"""
+x, y = utils.get_data("EEG", "subject_id")
+
+df = pd.read_pickle("../../data/data/numpy_files/df.pkl")
+dep_variable = "math_t1"
+ctrl_variable = "subject_id"
+
+x = torch.from_numpy(x.astype(np.float32))
+y = torch.from_numpy(df[dep_variable].to_numpy())
+c = torch.from_numpy(df[ctrl_variable].to_numpy())
+
+print(x.dtype)
+
+data = Dataset(x, y, c)
+model = ControlledNetwork()
+model.tqdm_disable = False
+#model.fit(data)
+
 
 # Digits
+"""
+x_np, y_np = utils.get_data("digits", "subject_id")
+x = torch.Tensor(x_np)
+y = torch.from_numpy(y_np)
+c = torch.from_numpy(y_np)
+data = Dataset(x[:500], y[:500], c[:500])
 
-x, y = utils.get_data("digits", "subject_id")
-x = torch.Tensor(x)
-df = pd.DataFrame(y, columns=["target"])
+from sklearn.model_selection import cross_val_score
+from skopt.space import Real, Integer, Categorical
+from skopt.utils import use_named_args
+from skopt.callbacks import CheckpointSaver, VerboseCallback
+from skopt import gp_minimize
+from skopt.plots import plot_evaluations, plot_objective, plot_convergence
 
-data = Dataset(x, df)
-data.dep_variable = "target"
-data.indep_variable = "digits"
-data.ctrl_variable = "target"
+space = [Real(5e-5, 1e-2, prior="log-uniform", name="lr")]
+model = ControlledNetwork()
+model.tqdm_disable = False
 
+# Construct objective
+# The objective is the negative mean cv score of the estimator as a function of the hp:s
+@use_named_args(space)
+def objective(**params):
+    model.set_params(**params)
+    train_data, test_data = data.train_test_split()
+    model.construct_network(data)
+    print(model.score(test_data))
+    model.fit(train_data)
+    return -model.score(test_data)
 
-cn = ControlledNetwork()
-cn.construct_network(data)
-cn.learn(data)
+# Optimize objective over hp-space
+#checkpoint_saver = CheckpointSaver("./Checkpoint/checkpoint.pkl")
+verbose = VerboseCallback(1)
+opt = gp_minimize(objective, space, n_calls=50, callback=[verbose])
+print("Best score=%.4f" % opt.fun)
+
+import matplotlib.pyplot as plt
+
+# Plot convergence trace, evaluations and objective function
+plot_convergence(opt)
+plt.savefig("./Results/conv_plot.png")
+plt.show()
+
+plt.rcParams["font.size"] = 7
+#plt.rcParams["figure.autolayout"] = True
+_ = plot_evaluations(opt, bins=10)
+plt.savefig("./Results/eval_plot.png")
+plt.show()
+
+plt.rcParams["font.size"] = 7
+#plt.rcParams["figure.autolayout"] = True
+_ = plot_objective(opt)
+plt.savefig("./Results/obj_plot.png")
+plt.show()
+"""

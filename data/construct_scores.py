@@ -104,15 +104,17 @@ scores_t2 = np.nan_to_num(scores_t2)
 
 transformer_t1 = FactorAnalysis(n_components=1)
 latent_t1 = transformer_t1.fit_transform(scores_t1)
-_ = plt.hist(latent_t1, bins="auto")
-plt.title("latent_t1")
-plt.show()
+if plot:
+	_ = plt.hist(latent_t1, bins="auto")
+	plt.title("latent_t1")
+	plt.show()
 
 transformer_t2 = FactorAnalysis(n_components=1)
 latent_t2 = transformer_t2.fit_transform(scores_t2)
-_ = plt.hist(latent_t2, bins="auto")
-plt.title("latent_t2")
-plt.show()
+if plot:
+	_ = plt.hist(latent_t2, bins="auto")
+	plt.title("latent_t2")
+	plt.show()
 
 latent_d = latent_t2 - latent_t1
 
@@ -134,5 +136,4 @@ data_list = [subject_id,
 data = np.concatenate(data_list, axis=1)
 
 df = pd.DataFrame(data, columns=labels)
-df = df.round(4)
 df.to_pickle(file_path + "scores_data.pkl")

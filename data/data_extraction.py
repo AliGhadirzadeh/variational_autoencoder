@@ -114,7 +114,6 @@ for i in range(1, 52):
 	subs.append(str(i))
 
 # Extract snippets
-snippet_array = None
 for sub in subs:
 	print("Processing subject " + sub)
 	sub_data_path = data_path + "subs/" + sub + "_transpose"
@@ -179,10 +178,12 @@ for sub_ind in range(len(data_list)):
 		array_dict[key][start_index:end_index] = list_dict[key][sub_ind]
 
 snippet_array = np.swapaxes(snippet_array, 1, 2)
-
 for channel in range(snippet_array.shape[1]):
 	scaler = StandardScaler()
 	snippet_array[:, channel, :] = scaler.fit_transform(snippet_array[:, channel, :])
+
+for key in key_list:
+		array_dict[key] = array_dict[key].astype(np.single)
 
 np.save(npy_path + "snippets.npy", snippet_array)
 for key in key_list:
@@ -195,7 +196,6 @@ fixed_y = np.zeros(y_ids.size, dtype=np.int64)
 for idx, id_ in enumerate(unique_ids):
     fixed_y[y_ids == id_] = idx
 array_dict["subject_id"] = fixed_y
-
 
 df = pd.DataFrame(array_dict)
 df.to_pickle(npy_path + "df.pkl")
