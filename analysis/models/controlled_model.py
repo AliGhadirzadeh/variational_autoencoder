@@ -1,10 +1,9 @@
 import numpy as np
-import pandas as pd
 from tqdm import tqdm 
 
 import torch
 import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 import torch.optim as optim
 
@@ -69,7 +68,7 @@ class PredictorNetwork(nn.Module):
 
 
 class ExtractorNetwork(nn.Module):
-    """docstring for Extractor_Network"""
+
     def __init__(self):
         super(ExtractorNetwork, self).__init__()
         self.network = None
@@ -109,8 +108,9 @@ class ExtractorNetwork(nn.Module):
 
 class ControlledNetwork(nn.Module, BaseEstimator):
     """docstring for CompositeNetwork"""
-    def __init__(self, lr=3e-4, writer=None):
+    def __init__(self, alpha=1, lr=3e-4):
         super(ControlledNetwork, self).__init__()
+        self.alpha = alpha
         self.lr = lr
 
         self.extractor = ExtractorNetwork()
@@ -120,7 +120,7 @@ class ControlledNetwork(nn.Module, BaseEstimator):
         self.n_epoch = 100
         
         self.tqdm_disable = False
-        self.writer = writer
+        self.writer = None
 
     def construct_network(self, data):
         with torch.no_grad():
@@ -129,9 +129,6 @@ class ControlledNetwork(nn.Module, BaseEstimator):
             x_latent = self.extractor(x)
             self.dep_predictor.construct_network(x_latent, y)
             self.ctrl_predictor.construct_network(x_latent, c)
-            #if self.writer:
-                #self.writer.add_graph(self)
-            self.initialized = True
 
     def forward(self, x):
         latent_x = self.extractor(x)
@@ -140,6 +137,7 @@ class ControlledNetwork(nn.Module, BaseEstimator):
         return y, c
 
     def fit(self, data):
+
         self.construct_network(data)
         train_data, val_data = data.train_test_split()
         train_loader = DataLoader(train_data, batch_size=32, shuffle=True)
@@ -208,7 +206,7 @@ class ControlledNetwork(nn.Module, BaseEstimator):
         ctrl_loss = self.ctrl_predictor.loss(c_hat, c)
 
         # Extractor trained to minimize composite loss
-        extractor_loss = dep_loss + 1 * ctrl_loss
+        extractor_loss = dep_loss - self.alpha*ctrl_loss
         return extractor_loss
 
     def score(self, data):
@@ -221,7 +219,7 @@ class ControlledNetwork(nn.Module, BaseEstimator):
     def evaluate(self, train_data, test_data, epoch):
         train_x, train_y, train_c = train_data[:]
         test_x, test_y, test_c = test_data[:]
-        
+
         train_y_hat, train_c_hat = self.forward(train_x)
         test_y_hat, test_c_hat = self.forward(test_x)
 
@@ -234,6 +232,9 @@ class ControlledNetwork(nn.Module, BaseEstimator):
         test_dep_score = self.dep_predictor.score(test_y_hat, test_y)
         test_ctrl_score = self.ctrl_predictor.score(test_c_hat, test_c)
 
+        print(test_dep_score)
+        print(test_ctrl_score)
+
         if self.writer:
             self.writer.add_scalars("Loss", {"extractor" : extractor_loss,
                                              "dep_predictor" : dep_loss,
@@ -245,30 +246,8 @@ class ControlledNetwork(nn.Module, BaseEstimator):
             self.writer.add_scalars("Score/ctrl_predictor", {"train" : train_ctrl_score,
                                                              "test" : test_ctrl_score},
                                                               epoch)
-
-
-class Dataset(Dataset):
-
-    def __init__(self, x, y, c):
-        self.x = x
-        self.y = y
-        self.c = c
-
-    def __len__(self):
-        return self.x.shape[0]
-
-    def __getitem__(self, index):
-        x_sample = self.x[index]
-        y_sample = self.y[index]
-        c_sample = self.c[index]
-        return x_sample, y_sample, c_sample 
-
-    def train_test_split(self, test_size=0.2):
-        from sklearn.model_selection import train_test_split
-        data_list = train_test_split(self.x, self.y, self.c, 
-                                     test_size=test_size)
-        x_train, y_train, c_train = data_list[0::2]
-        x_test, y_test, c_test = data_list[1::2]
-        train_data = Dataset(x_train, y_train, c_train)
-        test_data = Dataset(x_test, y_test, c_test)
-        return train_data, test_data
+            if epoch == self.n_epoch-1:
+                latent_test_x = self.extractor(test_x)
+                self.writer.add_embedding(latent_test_x)
+                self.writer.add_graph(self.network, input_to_model=test_x)
+                self.writer.close()
