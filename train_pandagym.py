@@ -14,19 +14,20 @@ parser.add_argument('--eval', default=False, action='store_true', help='set it  
 parser.add_argument('--path-to-model', default='', type=str, help='the path to save/load the model')
 parser.add_argument('--path-to-data', default='', type=str, help='the path to load the data')
 parser.add_argument('--model-filename', default=None, type=str, help='the filename of the model to be evaluated')
-parser.add_argument('--latent-size', default=5, type=int, help='the dimension of the latent variable')
+parser.add_argument('--latent-size', default=2, type=int, help='the dimension of the latent variable')
 parser.add_argument('--num-epoch', default=1000, type=int, help='the number of epochs to train the model')
 parser.add_argument('--snapshot', default=10, type=int, help='the number of epochs to make a snapshot of the training')
+parser.add_argument('--step-length', default=1, type=int, help='the time-steps for the prediction')
 parser.add_argument('--batch-size', default=1000, type=int, help='the batch size')
-parser.add_argument('--beta-min', default=0.001, type=float, help='the starting value for beta')
-parser.add_argument('--beta-max', default=0.001, type=float, help='the final value for beta')
+parser.add_argument('--beta-min', default=0.002, type=float, help='the starting value for beta')
+parser.add_argument('--beta-max', default=0.002, type=float, help='the final value for beta')
 parser.add_argument('--beta-steps', default=1, type=int, help='the number of steps to increase beta')
 parser.add_argument('--kl-loss-target', default=0.0, type=float, help='the target value of the kl-loss')
 parser.add_argument('--device', default='cpu', type=str, help='the device for training, cpu or cuda')
 
 
 class JointActionDataset(Dataset):
-    def __init__(self, data_filename):
+    def __init__(self, data_filename, step_length=1):
         if 'unrolled' not in data_filename:
             traj_data = torch.from_numpy(np.load(data_filename)).float()
             num_traj = traj_data.shape[0]
@@ -34,12 +35,12 @@ class JointActionDataset(Dataset):
             self.num_joints = traj_data.shape[2]
             self.num_samples = num_traj * (len_traj - 1)
             self.data = torch.zeros(self.num_samples, self.num_joints)
-            self.cdata = torch.zeros(self.num_samples, self.num_joints)
+            self.cdata = torch.zeros(self.num_samples, self.num_joints+1)
             ctr = 0
             for i in range(num_traj):
-                for j in range((len_traj - 1)):
-                    self.cdata[ctr] = traj_data[i][j]
-                    self.data[ctr] = traj_data[i][j + 1]
+                for j in range((len_traj - step_length)):
+                    self.cdata[ctr] = torch.cat((traj_data[i][j], torch.tensor([j])))
+                    self.data[ctr] = traj_data[i][j + step_length]
                     ctr += 1
             np.save('data_unrolled.npy', self.data)
             np.save('cdata_unrolled.npy', self.cdata)
@@ -61,7 +62,7 @@ if __name__ == '__main__':
     latent_size = args.latent_size
     device = args.device
     print('Device is: {}'.format(device))
-    joint_action_dataset = JointActionDataset(args.path_to_data)
+    joint_action_dataset = JointActionDataset(args.path_to_data, args.step_length)
     joint_action_loader = DataLoader(joint_action_dataset, batch_size=args.batch_size, shuffle=True, num_workers=0)
     n_joints = joint_action_dataset.num_joints
 
