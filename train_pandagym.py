@@ -27,7 +27,7 @@ parser.add_argument('--device', default='cpu', type=str, help='the device for tr
 
 
 class JointActionDataset(Dataset):
-    def __init__(self, data_filename, step_length=1):
+    def __init__(self, data_filename, device, step_length=1):
         if 'unrolled' not in data_filename:
             traj_data = torch.from_numpy(np.load(data_filename)).float()
             num_traj = traj_data.shape[0]
@@ -49,6 +49,8 @@ class JointActionDataset(Dataset):
             self.cdata = np.load('cdata_unrolled.npy')
             self.num_samples = self.data.shape[0]
             self.num_joints = self.data.shape[1]
+        self.data = self.data.to(device)
+        self.cdata = self.cdata.to(device)
 
     def __len__(self):
         return self.num_samples
@@ -62,7 +64,7 @@ if __name__ == '__main__':
     latent_size = args.latent_size
     device = args.device
     print('Device is: {}'.format(device))
-    joint_action_dataset = JointActionDataset(args.path_to_data, args.step_length)
+    joint_action_dataset = JointActionDataset(args.path_to_data, device, args.step_length)
     joint_action_loader = DataLoader(joint_action_dataset, batch_size=args.batch_size, shuffle=True, num_workers=0)
     n_joints = joint_action_dataset.num_joints
 
