@@ -66,8 +66,8 @@ if __name__ == '__main__':
     joint_action_loader = DataLoader(joint_action_dataset, batch_size=args.batch_size, shuffle=True, num_workers=0)
     n_joints = joint_action_dataset.num_joints
 
-    encoder = autoencoder_models.FullyConnectedConditionalEncoder(n_joints, n_joints, latent_size)
-    decoder = autoencoder_models.FullyConnectedConditionalDecoder(latent_size, n_joints, n_joints)
+    encoder = autoencoder_models.FullyConnectedConditionalEncoder(n_joints, n_joints+1, latent_size)
+    decoder = autoencoder_models.FullyConnectedConditionalDecoder(latent_size, n_joints+1, n_joints)
     vae_model = vae.VariationalAutoEncoder(encoder, decoder, conditional=True,
                                            path_to_model=args.path_to_model,
                                            device=device,
