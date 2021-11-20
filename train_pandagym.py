@@ -45,8 +45,8 @@ class JointActionDataset(Dataset):
             np.save('data_unrolled.npy', self.data)
             np.save('cdata_unrolled.npy', self.cdata)
         else:
-            self.data = np.load('data_unrolled.npy')
-            self.cdata = np.load('cdata_unrolled.npy')
+            self.data = torch.from_numpy(np.load('data_unrolled.npy'))
+            self.cdata = torch.from_numpy(np.load('cdata_unrolled.npy'))
             self.num_samples = self.data.shape[0]
             self.num_joints = self.data.shape[1]
         self.data = self.data.to(device)
