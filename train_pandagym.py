@@ -14,7 +14,7 @@ parser.add_argument('--eval', default=False, action='store_true', help='set it  
 parser.add_argument('--path-to-model', default='', type=str, help='the path to save/load the model')
 parser.add_argument('--path-to-data', default='', type=str, help='the path to load the data')
 parser.add_argument('--model-filename', default=None, type=str, help='the filename of the model to be evaluated')
-parser.add_argument('--latent-size', default=2, type=int, help='the dimension of the latent variable')
+parser.add_argument('--latent-size', default=1, type=int, help='the dimension of the latent variable')
 parser.add_argument('--num-epoch', default=1000, type=int, help='the number of epochs to train the model')
 parser.add_argument('--snapshot', default=10, type=int, help='the number of epochs to make a snapshot of the training')
 parser.add_argument('--step-length', default=1, type=int, help='the time-steps for the prediction')
@@ -35,20 +35,22 @@ class JointActionDataset(Dataset):
             self.num_joints = traj_data.shape[2]
             self.num_samples = num_traj * (len_traj - 1)
             self.data = torch.zeros(self.num_samples, self.num_joints)
-            self.cdata = torch.zeros(self.num_samples, self.num_joints+1)
+            self.cdata = torch.zeros(self.num_samples, 1)
             ctr = 0
             for i in range(num_traj):
                 for j in range((len_traj - step_length)):
-                    self.cdata[ctr] = torch.cat((traj_data[i][j], torch.tensor([j])))
-                    self.data[ctr] = traj_data[i][j + step_length]
+                    self.cdata[ctr] = torch.tensor([j])  # torch.cat((traj_data[i][j], torch.tensor([j])))
+                    self.data[ctr] = traj_data[i][j + step_length] - traj_data[i][j]
                     ctr += 1
             np.save('data_unrolled.npy', self.data)
             np.save('cdata_unrolled.npy', self.cdata)
+            print('data saved')
         else:
             self.data = torch.from_numpy(np.load('data_unrolled.npy'))
             self.cdata = torch.from_numpy(np.load('cdata_unrolled.npy'))
             self.num_samples = self.data.shape[0]
             self.num_joints = self.data.shape[1]
+            print('data loaded')
         self.data = self.data.to(device)
         self.cdata = self.cdata.to(device)
 
@@ -57,6 +59,13 @@ class JointActionDataset(Dataset):
 
     def __getitem__(self, idx):
         return self.data[idx], self.cdata[idx]
+
+
+def print_tensor(t, t_name):
+    s = t_name
+    for i in range(t.shape[0]):
+        s += ', {:0.3f}'.format(t[i])
+    print(s)
 
 
 if __name__ == '__main__':
@@ -68,8 +77,8 @@ if __name__ == '__main__':
     joint_action_loader = DataLoader(joint_action_dataset, batch_size=args.batch_size, shuffle=True, num_workers=0)
     n_joints = joint_action_dataset.num_joints
 
-    encoder = autoencoder_models.FullyConnectedConditionalEncoder(n_joints, n_joints+1, latent_size)
-    decoder = autoencoder_models.FullyConnectedConditionalDecoder(latent_size, n_joints+1, n_joints)
+    encoder = autoencoder_models.FullyConnectedConditionalEncoder(n_joints, 1, latent_size)
+    decoder = autoencoder_models.FullyConnectedConditionalDecoder(latent_size, 1, n_joints)
     vae_model = vae.VariationalAutoEncoder(encoder, decoder, conditional=True,
                                            path_to_model=args.path_to_model,
                                            device=device,
@@ -84,14 +93,24 @@ if __name__ == '__main__':
         vae_model.train_vae(joint_action_loader)
 
     if args.eval:
-        vae_model.load_model('vae_0019.mdl')
+        vae_model.load_model('vae_0039.mdl')
         vae_model.eval()
-        for x, c in joint_action_loader:
-            for _ in range(10):
-                z = torch.normal(mean=torch.zeros(1, 2), std=torch.ones(1, 2))
-                x_hat = vae_model.decode(z, c[0].view(1, -1))
-                print('{:0.3f}, {:0.3f}, {:0.3f}, {:0.3f}, {:0.3f}, {:0.3f}, {:0.3f},'.format(x_hat[0][0], x_hat[0][1],
-                                                                                              x_hat[0][2], x_hat[0][3],
-                                                                                              x_hat[0][4], x_hat[0][5],
-                                                                                              x_hat[0][6]))
-            break
+
+        action_iter = iter(joint_action_loader)
+        x = joint_action_dataset.data[0]
+        c = joint_action_dataset.cdata[0]
+        for idx in range(76):
+            print_tensor(joint_action_dataset.data[idx], 'x')
+            c[7] = float(idx)
+            #print_tensor(c, 'c')
+            z = torch.normal(mean=torch.zeros(1, 2), std=torch.ones(1, 2))
+            c = joint_action_dataset.cdata[idx]
+            x_hat = vae_model.decode(z, c.view(1,-1))
+            c[0:7] = torch.from_numpy(x_hat)
+
+            print_tensor(x_hat[0], 'x_hat')
+
+
+
+
+
