@@ -12,16 +12,15 @@ from sklearn.base import BaseEstimator
 from sklearn.metrics import r2_score, accuracy_score
 
 
-# Add batch_norm
 class EEGTCN(nn.Module, BaseEstimator):
-    """docstring for CompositeNetwork"""
+
     def __init__(self, lr=3e-4):
         super(EEGTCN, self).__init__()
         self.lr = lr
         self.criterion = None
         self.type = None
 
-        self.n_epoch = 200
+        self.n_epoch = 100
         
         self.tqdm_disable = False
         self.writer = None
@@ -40,31 +39,31 @@ class EEGTCN(nn.Module, BaseEstimator):
             p_e = 0.2
             p_t = 0.3
 
-            # Temporal convolution
-            layers.append(nn.Conv2d(1, f_1, (1, k_e), padding="same"))
-            layers.append(nn.BatchNorm2d(f_1))
+            self.network = nn.Sequential(
+                               # Temporal convolution
+                               nn.Conv2d(1, f_1, (1, k_e), padding="same"),
+                               nn.BatchNorm2d(f_1),
 
-            # Depthwise convolution
-            layers.append(DepthwiseConv2d(f_1, 2*f_1, kernel_size=(20, 1)))
-            layers.append(nn.BatchNorm2d(2*f_1))
-            layers.append(nn.ELU())
-            layers.append(nn.AvgPool2d((1, 8)))
-            layers.append(nn.Dropout(p_e))
+                               # Depthwise convolution
+                               DepthwiseConv2d(f_1, 2*f_1, kernel_size=(20, 1)),
+                               nn.BatchNorm2d(2*f_1),
+                               nn.ELU(),
+                               nn.AvgPool2d((1, 8)),
+                               nn.Dropout(p_e),
 
-            # Separable convolution
-            layers.append(SeparableConv2d(2*f_1, f_2, (1, 16)))
-            layers.append(nn.BatchNorm2d(f_2))
-            layers.append(nn.ELU())
-            layers.append(nn.AvgPool2d((1, 8)))
-            layers.append(nn.Dropout(p_e))
+                               # Separable convolution
+                               SeparableConv2d(2*f_1, f_2, (1, 16)),
+                               nn.BatchNorm2d(f_2),
+                               nn.ELU(),
+                               nn.AvgPool2d((1, 8)),
+                               nn.Dropout(p_e),
 
-            # TCN
-            layers.append(TemporalConvNet(f_2, f_t, k_t))
+                               # TCN
+                               TemporalConvNet(f_2, f_t, k_t),
 
-            # FC
-            layers.append(nn.Linear(f_t[0], self.n_outputs))
+                               # FC
+                               nn.Linear(f_t[0], self.n_outputs))
 
-            self.network = nn.Sequential(*layers)
 
     def set_type(self, y):
             if y.dtype == torch.int64:
@@ -81,11 +80,7 @@ class EEGTCN(nn.Module, BaseEstimator):
     def forward(self, x):
         x = torch.unsqueeze(x, dim=1)
         for layer in self.network:
-            if type(layer)==TemporalConvNet:
-                x = torch.squeeze(x)
             x = layer(x)
-            if type(layer)==TemporalConvNet:
-                x = x[:, :, -1]
         return x
 
     def fit(self, data):
@@ -153,14 +148,9 @@ class EEGTCN(nn.Module, BaseEstimator):
                                     epoch)
             if epoch == self.n_epoch-1:
                 extractor = self.network[:-1]
-                latent_x = torch.unsqueeze(test_x, dim=1)
-                for layer in extractor:
-                    if type(layer)==TemporalConvNet:
-                        latent_x = torch.squeeze(latent_x)
-                    latent_x = layer(latent_x)
-                    if type(layer)==TemporalConvNet:
-                        latent_x = latent_x[:, :, -1]
+                latent_x = extractor(torch.unsqueeze(test_x, dim=1))
                 self.writer.add_embedding(latent_x)
+                self.writer.add_graph(self, input_to_model=test_x)
                 self.writer.close()
 
 
@@ -248,4 +238,6 @@ class TemporalConvNet(nn.Module):
         self.network = nn.Sequential(*layers)
 
     def forward(self, x):
-        return self.network(x)
+        x = torch.squeeze(x)
+        x = self.network(x)
+        return x[:, :, -1]

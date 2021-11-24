@@ -29,50 +29,34 @@ class EEGNetwork(nn.Module, BaseEstimator):
         x, y = data[:]
         with torch.no_grad():
             self.set_type(y)
+            f_1 = 8
+            f_2 = 16
+            k_e = 32
+            p_e = 0.2
 
-            layers = []
+            self.network = nn.Sequential(
+                               # Temporal convolution
+                               nn.Conv2d(1, f_1, (1, k_e), padding="same"),
+                               nn.BatchNorm2d(f_1),
 
-            layers.append(nn.Conv2d(1, 25, (1, 5)))
-            layers.append(nn.Conv2d(25, 25, (16, 1)))
-            layers.append(nn.BatchNorm2d(25))
-            layers.append(nn.ELU())
-            layers.append(nn.MaxPool2d((1, 2)))
-            layers.append(nn.Dropout())
+                               # Depthwise convolution
+                               DepthwiseConv2d(f_1, 2*f_1, kernel_size=(20, 1)),
+                               nn.BatchNorm2d(2*f_1),
+                               nn.ELU(),
+                               nn.AvgPool2d((1, 8)),
+                               nn.Dropout(p_e),
 
-            layers.append(nn.Conv2d(25, 50, (1, 5)))
-            layers.append(nn.BatchNorm2d(50))
-            layers.append(nn.ELU())
-            layers.append(nn.MaxPool2d((1, 2)))
-            layers.append(nn.Dropout())
+                               # Separable convolution
+                               SeparableConv2d(2*f_1, f_2, (1, 16)),
+                               nn.BatchNorm2d(f_2),
+                               nn.ELU(),
+                               nn.AvgPool2d((1, 8)),
+                               nn.Dropout(p_e),
 
-            layers.append(nn.Conv2d(50, 100, (1, 5)))
-            layers.append(nn.BatchNorm2d(100))
-            layers.append(nn.ELU())
-            layers.append(nn.MaxPool2d((1, 2)))
-            layers.append(nn.Dropout())
+                               # FC
+                               nn.Flatten(),
+                               nn.Linear(112, self.n_outputs))
 
-            layers.append(nn.Conv2d(100, 200, (1, 5)))
-            layers.append(nn.BatchNorm2d(200))
-            layers.append(nn.ELU())
-            layers.append(nn.MaxPool2d((1, 2)))
-            layers.append(nn.Dropout())
-
-            layers.append(nn.Flatten())
-
-            layers.append(nn.Linear(27000, 5000))
-            layers.append(nn.ReLU())
-
-            layers.append(nn.Linear(5000, 1000))
-            layers.append(nn.ReLU())
-
-            layers.append(nn.Linear(1000, 200))
-            layers.append(nn.ReLU())
-
-            layers.append(nn.Linear(200, 100))
-            layers.append(nn.ReLU())
-
-            layers.append(nn.Linear(100, self.n_outputs))
-            self.network = nn.Sequential(*layers)
 
     def set_type(self, y):
             if y.dtype == torch.int64:
@@ -156,7 +140,35 @@ class EEGNetwork(nn.Module, BaseEstimator):
                                     "test" : test_score},
                                     epoch)
             if epoch == self.n_epoch-1:
-                extractor = self.network[:-3]
-                latent_test_x = extractor(test_x)
+                extractor = self.network[:-1]
+                latent_x = extractor(torch.unsqueeze(test_x, dim=1))
                 self.writer.add_embedding(latent_test_x)
+                self.writer.add_graph(self, input_to_model=test_x)
                 self.writer.close()
+
+
+class SeparableConv2d(nn.Module):
+
+    def __init__(self, in_channels, out_channels, kernel_size, bias=False):
+        super(SeparableConv2d, self).__init__()
+        self.depthwise = nn.Conv2d(in_channels, in_channels, kernel_size=kernel_size, 
+                                   groups=in_channels, bias=bias, padding="same")
+        self.pointwise = nn.Conv2d(in_channels, out_channels, 
+                                   kernel_size=1, bias=bias, padding="same")
+
+    def forward(self, x):
+        x = self.depthwise(x)
+        x = self.pointwise(x)
+        return x
+
+
+class DepthwiseConv2d(nn.Module):
+
+    def __init__(self, in_channels, out_channels, kernel_size, bias=False):
+        super(DepthwiseConv2d, self).__init__()
+        self.depthwise = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, 
+                                   groups=in_channels, bias=bias, padding=0)
+
+    def forward(self, x):
+        x = self.depthwise(x)
+        return x

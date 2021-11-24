@@ -2,22 +2,22 @@ import numpy as np
 import pandas as pd
 import torch
 
-from models.conv1d_model import Conv1dNetwork
-from models.controlled_model import ControlledNetwork
-from models.test_model import TestNetwork
 from models.eegnet_model import EEGNetwork
 from models.eegtcn_model import EEGTCN
+from models.adv_model_old import AdvNetOld
+from models.adv_latent_model import AdvLatentNet
 from models.datasets import *
 from sklearn.datasets import load_digits
 
-def get_data(data_string, binned=False):
+def get_data(data_string, binned=False, n_levels=3):
 	if data_string == "EEG":
 		x = np.load("../../data/data/numpy_files/snippets.npy")
 		df = pd.read_pickle("../../data/data/numpy_files/df.pkl")
 		dep_variable = "math_t1"
 		x = torch.from_numpy(x.astype(np.float32))
 		y = torch.from_numpy(df[dep_variable].to_numpy())
-		data = Dataset(x, y, binned=binned) if binned else Dataset(x, y)
+		ids = torch.from_numpy(df["subject_id"].to_numpy())
+		data = SubjectDataset(x, y, ids, binned=binned, n_levels=n_levels) if binned else SubjectDataset(x, y, ids)
 
 	elif data_string == "EEG_ctrl":
 		x = np.load("../../data/data/numpy_files/snippets.npy")
@@ -43,18 +43,20 @@ def get_data(data_string, binned=False):
 		data = CtrlDataset(x, y, c)
 	return data
 
+
 def get_model(model_string):
-	if model_string == "conv1d":
-		return Conv1dNetwork()
 
-	elif model_string == "ctrl":
-		return ControlledNetwork()
-
-	elif model_string == "test":
-		return TestNetwork()
-
-	elif model_string == "eegnet":
+	if model_string == "eegnet":
 		return EEGNetwork()
 
 	elif model_string == "eegtcn":
 		return EEGTCN()
+
+	elif model_string == "eegtcn_sgd":
+		return EEGTCN_sgd()
+
+	elif model_string == "adv_old":
+		return AdvNetOld()
+
+	elif model_string == "adv_latent":
+		return AdvLatentNet()
