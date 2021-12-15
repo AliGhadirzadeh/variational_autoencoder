@@ -1,16 +1,30 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
 
+from models.dgdann_20 import DG_DANN_20
+from models.datasets import *
 
-# Generate data
-# z ~ p(z), z dep x, y
-# x and y generate z
-# It should be possible to recover them independently
-# The same reasoning motivates the EEG case
+# change paths to relevant files
+folder_path = "../../data/rsEEG/data/numpy_files/"
 
-def f_z(x, y):
-	return z
+x = np.load(folder_path + "snippets.npy")
+df = pd.read_pickle(folder_path + "df.pkl")
 
-x = torch.rand(10)
-y = torch.rand(10)
-z = f_z(x, y)
+x = torch.from_numpy(x.astype(np.float32))
+y = torch.from_numpy(df["subject_id"].to_numpy())
 
-data = Dataset(x, y, z)
+data = XY_Dataset(x, y)
+
+model = DG_DANN_20()
+model.load_state_dict(torch.load("./pretrained_dg_dann.pt"))
+model.eval()
+
+x, y = data[:]
+
+features = model.Gf(x)
+
+import sys
+np.set_printoptions(threshold=sys.maxsize)
+print(features.detach().numpy())
+

@@ -1,48 +1,9 @@
 import numpy as np
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset          
 
 
-class CtrlDataset(Dataset):
-
-    def __init__(self, x, y, c, binned=False):
-        self.x = x
-        self.y = self.bin(y) if binned else y
-        self.c = c
-
-    def __len__(self):
-        return self.x.shape[0]
-
-    def __getitem__(self, index):
-        x_sample = self.x[index]
-        y_sample = self.y[index]
-        c_sample = self.c[index]
-        return x_sample, y_sample, c_sample 
-
-    def train_test_split(self, test_size=0.2):
-        from sklearn.model_selection import train_test_split
-        data_list = train_test_split(self.x, self.y, self.c, 
-                                     test_size=test_size,
-                                     stratify=self.bin(self.y))
-        x_train, y_train, c_train = data_list[0::2]
-        x_test, y_test, c_test = data_list[1::2]
-        train_data = CtrlDataset(x_train, y_train, c_train)
-        test_data = CtrlDataset(x_test, y_test, c_test)
-        return train_data, test_data
-
-    def bin(self, y, n_levels=3):
-        binned_vals = torch.zeros(len(self), dtype=torch.int64)
-        unique_vals = torch.unique(y)
-        chunks = unique_vals.chunk(n_levels)
-        for i, chunk in enumerate(chunks):
-            binned_vals[self.isin(y, chunk)] = i
-        return binned_vals
-
-    def isin(self, ar1, ar2):
-        return (ar1[..., None] == ar2).any(-1)            
-
-
-class Dataset(Dataset):
+class XY_Dataset(Dataset):
 
     def __init__(self, x, y, binned=False):
         self.x = x
@@ -63,8 +24,8 @@ class Dataset(Dataset):
                                      stratify=self.bin(self.y))
         x_train, y_train = data_list[0::2]
         x_test, y_test = data_list[1::2]
-        train_data = Dataset(x_train, y_train)
-        test_data = Dataset(x_test, y_test)
+        train_data = XY_Dataset(x_train, y_train)
+        test_data = XY_Dataset(x_test, y_test)
         return train_data, test_data
 
     def bin(self, y, n_levels=3):
@@ -79,12 +40,12 @@ class Dataset(Dataset):
         return (ar1[..., None] == ar2).any(-1) 
 
 
-class SubjectDataset(Dataset):
+class XYD_Dataset(Dataset):
 
-    def __init__(self, x, y, ids, binned=False, n_levels=3):
+    def __init__(self, x, y, d, binned=False, n_levels=3):
         self.x = x
         self.y = self.bin(y, n_levels=n_levels) if binned else y
-        self.ids = ids
+        self.d = d
         self.subject_wise = False
         self.test_size = 0.2
 
@@ -94,22 +55,22 @@ class SubjectDataset(Dataset):
     def __getitem__(self, index):
         x_sample = self.x[index]
         y_sample = self.y[index]
-        id_sample = self.ids[index]
-        return x_sample, y_sample, id_sample
+        d_sample = self.d[index]
+        return x_sample, y_sample, d_sample
 
     def train_test_split(self):
         if self.subject_wise:
-            data_tuple = self.subject_wise_split(self.x, self.y, self.ids,
+            data_tuple = self.subject_wise_split(self.x, self.y, self.d,
                                                  stratify=True)
         else:
             from sklearn.model_selection import train_test_split
-            data_tuple = train_test_split(self.x, self.y, self.ids,
+            data_tuple = train_test_split(self.x, self.y, self.d,
                                      test_size=self.test_size,
                                      stratify=self.bin(self.y))
-        x_train, y_train, ids_train = data_tuple[0::2]
-        x_test, y_test, ids_test = data_tuple[1::2]
-        train_data = SubjectDataset(x_train, y_train, ids_train)
-        test_data = SubjectDataset(x_test, y_test, ids_test)
+        x_train, y_train, d_train = data_tuple[0::2]
+        x_test, y_test, d_test = data_tuple[1::2]
+        train_data = XYD_Dataset(x_train, y_train, d_train)
+        test_data = XYD_Dataset(x_test, y_test, d_test)
         return train_data, test_data
 
     def bin(self, y, n_levels=3):
