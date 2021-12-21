@@ -24,7 +24,3 @@ x, y = data[:]
 
 features = model.Gf(x)
 
-import sys
-np.set_printoptions(threshold=sys.maxsize)
-print(features.detach().numpy())
-
