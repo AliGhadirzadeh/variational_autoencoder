@@ -97,30 +97,6 @@ class Gd_net(nn.Module):
         return accuracy_score(d, d_hat)
 
 
-class Probe_net(nn.Module):
-
-    def __init__(self):
-        super(Probe_net, self).__init__()
-        n_input = 12
-        n_output = 42
-        self.network = nn.Sequential(nn.Linear(n_input, 100), nn.BatchNorm1d(100), nn.ReLU(),
-                                     nn.Linear(100, 100), nn.BatchNorm1d(100), nn.ReLU(),
-                                     nn.Linear(100, 100), nn.BatchNorm1d(100), nn.ReLU(),
-                                     nn.Linear(100, n_output))
-        self.criterion = nn.CrossEntropyLoss()
-
-    def forward(self, x):
-        return self.network(x)
-
-    def loss(self, d_hat, d):
-        return self.criterion(d_hat, d)
-
-    def score(self, d_hat, d):
-        d_hat = np.argmax(d_hat, axis=1)
-        return accuracy_score(d, d_hat)
-
-
-
 class DG_DANN_20(nn.Module, BaseEstimator):
 
     def __init__(self, alpha=0.0):
@@ -226,59 +202,6 @@ class DG_DANN_20(nn.Module, BaseEstimator):
             if self.save_path:
                 print("Saving model.")
                 torch.save(self.state_dict(), self.save_path)
-
-    def probe(self, data):
-        train_data, val_data = data.train_test_split()
-        train_loader = DataLoader(train_data, batch_size=32, shuffle=True)
-
-        probe = Probe_net()
-        probe.lr = 3e-4
-        probe.epoch = 50
-        opt = optim.Adam(probe.parameters(), lr=probe.lr)
-
-        for epoch in tqdm(range(probe.epoch), disable=self.tqdm_disable):
-            for b_x, b_y, b_d in train_loader:
-                self.eval()
-                b_z = self.Gf(b_x)
-
-                self.train()
-                opt.zero_grad()
-                b_d_hat = probe(b_z)
-                loss = probe.loss(b_d_hat, b_d)
-                loss.backward()
-                opt.step()
-
-            with torch.no_grad():
-                self.eval()
-                self.evaluate_probe(probe, train_data, val_data, epoch)
-
-    def evaluate_probe(self, probe, train_data, test_data, epoch):
-        train_x, train_y, train_d = train_data[:]
-        test_x, test_y, test_d = test_data[:]
-
-        train_z = self.Gf(train_x)
-        train_d_hat = probe(train_z)
-
-        test_z = self.Gf(test_x)
-        test_d_hat = probe(test_z)
-
-        train_loss = probe.loss(train_d_hat, train_d)
-        test_loss = probe.loss(test_d_hat, test_d)
-
-        train_score = probe.score(train_d_hat, train_d)
-        test_score = probe.score(test_d_hat, test_d)
-
-        if self.print:
-            print("Train score (probe): " + "{:+.3f}".format(train_score))
-            print("Test score (probe):  " + "{:+.3f}".format(test_score))
-
-        if self.writer:
-            self.writer.add_scalars("Loss", {"train_probe" : train_loss,
-                                             "test_probe" : test_loss}, 
-                                             epoch)
-            self.writer.add_scalars("Score", {"train_probe" : train_score,
-                                              "test_probe" : test_score},
-                                              epoch)
 
 
 class SeparableConv2d(nn.Module):
