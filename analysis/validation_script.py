@@ -1,3 +1,4 @@
+import random
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -7,6 +8,10 @@ from models.probe_y import Probe_Y
 from models.probe_d import Probe_D
 from models.datasets import *
 from torch.utils.tensorboard import SummaryWriter
+
+random.seed(10)
+torch.manual_seed(0)
+np.random.seed(0)
 
 folder_path = "../../data/rsEEG/data/numpy_files/"
 
@@ -22,7 +27,7 @@ data.subject_wise = False
 data.test_size = 0.1
 
 model = DG_DANN_20()
-model.alpha = 0.3
+model.alpha = 0.05
 model.n_epoch = 25
 model.print = True
 
